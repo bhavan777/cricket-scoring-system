@@ -27,15 +27,21 @@ api_call() {
     local endpoint=$2
     local data=$3
     
-    echo -e "${YELLOW}>>> $method $endpoint${NC}"
+    # Echo debug info to stderr so it doesn't pollute stdout when captured
+    echo -e "${YELLOW}>>> $method $endpoint${NC}" >&2
+    
     if [ "$method" = "GET" ]; then
-        response=$(curl -s "$BASE_URL$endpoint")
+        curl -s "$BASE_URL$endpoint"
     else
-        response=$(curl -s -X $method "$BASE_URL$endpoint" \
+        curl -s -X $method "$BASE_URL$endpoint" \
             -H "Content-Type: application/json" \
-            -d "$data")
+            -d "$data"
     fi
-    echo "$response"
+}
+
+# Helper to extract ID from JSON response
+extract_id() {
+    python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('data', {}).get('id', '') if isinstance(data.get('data'), dict) else '')"
 }
 
 # 1. Create Stadiums
@@ -46,7 +52,14 @@ response=$(api_call "POST" "/tournaments/stadiums" '{
     "country": "Australia",
     "capacity": 100024
 }')
-STADIUM_ID_1=$(echo "$response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+echo "$response"
+STADIUM_ID_1=$(echo "$response" | extract_id)
+
+if [ -z "$STADIUM_ID_1" ]; then
+    echo -e "${RED}Error: Failed to create stadium or capture ID${NC}"
+    exit 1
+fi
+echo -e "${BLUE}Stadium ID 1: $STADIUM_ID_1${NC}"
 
 api_call "POST" "/tournaments/stadiums" '{
     "name": "Wankhede Stadium",
@@ -76,7 +89,13 @@ response=$(api_call "POST" "/tournaments" '{
     "endDate": "2024-06-29",
     "hostCountry": "USA & West Indies"
 }')
-TOURNAMENT_ID=$(echo "$response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+echo "$response"
+TOURNAMENT_ID=$(echo "$response" | extract_id)
+
+if [ -z "$TOURNAMENT_ID" ]; then
+    echo -e "${RED}Error: Failed to create tournament or capture ID${NC}"
+    exit 1
+fi
 echo -e "${BLUE}Tournament ID: $TOURNAMENT_ID${NC}"
 
 # 4. Add Teams to Tournament (with groups for World Cup format)
@@ -199,7 +218,14 @@ response=$(api_call "POST" "/tournaments" '{
     "endDate": "2024-09-17",
     "hostCountry": "Sri Lanka"
 }')
-ASIA_CUP_ID=$(echo "$response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+echo "$response"
+ASIA_CUP_ID=$(echo "$response" | extract_id)
+
+if [ -z "$ASIA_CUP_ID" ]; then
+    echo -e "${RED}Error: Failed to create Asia Cup tournament or capture ID${NC}"
+    exit 1
+fi
+echo -e "${BLUE}Asia Cup ID: $ASIA_CUP_ID${NC}"
 
 # 15. Add Asian Teams
 echo -e "${GREEN}15. Adding Asian Teams to Asia Cup${NC}"
@@ -248,10 +274,13 @@ echo -e "${GREEN}18. Testing 1-Day Gap Violation (should fail)${NC}"
 # Get first fixture date
 FIRST_DATE=$(api_call "GET" "/tournaments/$TOURNAMENT_ID/fixtures" | python3 -c "
 import sys, json
-data = json.load(sys.stdin)
-fixtures = data.get('data', [])
-if fixtures:
-    print(fixtures[0].get('match_date'))
+try:
+    data = json.load(sys.stdin)
+    fixtures = data.get('data', [])
+    if fixtures:
+        print(fixtures[0].get('match_date'))
+except:
+    pass
 ")
 
 # Try to create fixture on same date for same team (should fail)
@@ -274,7 +303,15 @@ echo "  4. If still tied, boundary count from entire match decides"
 
 # Create a match for super over testing
 response=$(api_call "POST" "/match/start" '{"team1Id":"team-india","team2Id":"team-pak"}')
-MATCH_ID=$(echo "$response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+echo "$response"
+MATCH_ID=$(echo "$response" | extract_id)
+
+if [ -z "$MATCH_ID" ]; then
+    echo -e "${RED}Error: Failed to create match or capture ID${NC}"
+    # Fallback to a test ID if needed, but better to fail
+    exit 1
+fi
+echo -e "${BLUE}Match ID: $MATCH_ID${NC}"
 
 # Start super over (simulating a tied match)
 echo -e "${GREEN}19a. Starting Super Over (Team India bats first)${NC}"
@@ -285,7 +322,14 @@ response=$(api_call "POST" "/tournaments/super-over/match/$MATCH_ID/start" '{
     "nonStrikerId": "ind-2",
     "bowlerId": "pak-8"
 }')
-SUPER_OVER_ID=$(echo "$response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+echo "$response"
+SUPER_OVER_ID=$(echo "$response" | extract_id)
+
+if [ -z "$SUPER_OVER_ID" ]; then
+    echo -e "${RED}Error: Failed to start super over or capture ID${NC}"
+    exit 1
+fi
+echo -e "${BLUE}Super Over ID: $SUPER_OVER_ID${NC}"
 
 # Record some balls in super over
 echo -e "${GREEN}19b. Recording Super Over Balls${NC}"
