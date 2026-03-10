@@ -41,8 +41,69 @@ api_call() {
 
 # Helper to extract ID from JSON response
 extract_id() {
-    python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('data', {}).get('id', '') if isinstance(data.get('data'), dict) else '')"
+    python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    result = data.get('data', {})
+    if isinstance(result, dict):
+        print(result.get('id', ''))
+    else:
+        print('')
+except:
+    print('')
+"
 }
+
+# ============ Test Team and Player CRUD ============
+
+echo -e "${GREEN}0. Testing Team and Player CRUD Operations${NC}"
+
+# Create a new team
+echo -e "${YELLOW}0a. Creating a new team${NC}"
+response=$(api_call "POST" "/teams" '{
+    "name": "Test Cricket Club",
+    "shortName": "TCC",
+    "players": [
+        {"name": "John Smith", "role": "Batsman", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm medium"},
+        {"name": "Mike Johnson", "role": "Bowler", "battingStyle": "Left-hand", "bowlingStyle": "Left-arm fast"}
+    ]
+}')
+echo "$response"
+NEW_TEAM_ID=$(echo "$response" | extract_id)
+
+if [ -z "$NEW_TEAM_ID" ]; then
+    echo -e "${RED}Error: Failed to create team${NC}"
+else
+    echo -e "${BLUE}New Team ID: $NEW_TEAM_ID${NC}"
+    
+    # Get the team
+    echo -e "${YELLOW}0b. Getting the new team${NC}"
+    api_call "GET" "/teams/$NEW_TEAM_ID"
+    
+    # Update the team
+    echo -e "${YELLOW}0c. Updating the team name${NC}"
+    api_call "PUT" "/teams/$NEW_TEAM_ID" '{"name": "Test Cricket Club Updated"}'
+    
+    # Add a new player to the team
+    echo -e "${YELLOW}0d. Adding a new player to the team${NC}"
+    response=$(api_call "POST" "/teams/$NEW_TEAM_ID/players" '{
+        "players": [
+            {"name": "David Brown", "role": "All-rounder", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm off break"}
+        ]
+    }')
+    echo "$response"
+    
+    # Get team players
+    echo -e "${YELLOW}0e. Getting team players${NC}"
+    api_call "GET" "/teams/$NEW_TEAM_ID/players"
+    
+    # Delete the test team
+    echo -e "${YELLOW}0f. Deleting the test team${NC}"
+    api_call "DELETE" "/teams/$NEW_TEAM_ID"
+fi
+
+echo ""
 
 # 1. Create Stadiums
 echo -e "${GREEN}1. Creating Stadiums${NC}"

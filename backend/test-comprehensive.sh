@@ -17,13 +17,12 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  Comprehensive Cricket API Tests${NC}"
 echo -e "${BLUE}========================================${NC}"
 
-# Helper function
+# Helper function - outputs response to stdout, debug to stderr
 api_call() {
     local method=$1
     local endpoint=$2
     local data=$3
     
-    # Echo debug info to stderr so it doesn't pollute stdout when captured
     echo -e "${YELLOW}>>> $method $endpoint${NC}" >&2
     
     if [ "$method" = "GET" ]; then
@@ -35,27 +34,39 @@ api_call() {
     fi
 }
 
-# Helper to extract ID from JSON response
+# Helper to extract ID from JSON response using python
 extract_id() {
-    python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('data', {}).get('id', '') if isinstance(data.get('data'), dict) else '')"
+    python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    result = data.get('data', {})
+    if isinstance(result, dict):
+        print(result.get('id', ''))
+    else:
+        print('')
+except:
+    print('')
+"
 }
 
 # 1. Setup Match
 echo -e "${GREEN}1. Setting up Match (England vs New Zealand)${NC}"
 response=$(api_call "POST" "/match/start" '{"team1Id":"team-eng","team2Id":"team-nz"}')
-echo "$response"
+echo "Response: $response"
 MATCH_ID=$(echo "$response" | extract_id)
 
 if [ -z "$MATCH_ID" ]; then
     echo -e "${RED}Error: Failed to create match or capture ID${NC}"
+    echo -e "${RED}Response was: $response${NC}"
     exit 1
 fi
 echo -e "${BLUE}Match ID: $MATCH_ID${NC}"
 
 # Set toss and start innings
-api_call "POST" "/match/$MATCH_ID/toss" '{"tossWinnerId":"team-eng","tossDecision":"bat"}'
+api_call "POST" "/match/$MATCH_ID/toss" '{"tossWinnerId":"team-eng","tossDecision":"bat"}' > /dev/null
 api_call "POST" "/match/$MATCH_ID/innings/start" \
-    '{"battingTeamId":"team-eng","bowlingTeamId":"team-nz","strikerId":"eng-1","nonStrikerId":"eng-2","bowlerId":"nz-8"}'
+    '{"battingTeamId":"team-eng","bowlingTeamId":"team-nz","strikerId":"eng-1","nonStrikerId":"eng-2","bowlerId":"nz-8"}' > /dev/null
 
 # 2. Test All Extra Types
 echo -e "${GREEN}2. Testing Extras (Wide, No Ball, Bye, Leg Bye)${NC}"
