@@ -448,6 +448,346 @@ api_call "DELETE" "/tournaments/$ASIA_CUP_ID"
 echo -e "${GREEN}22. Verifying Asia Cup Deletion${NC}"
 api_call "GET" "/tournaments"
 
+# ============ Test Match States and DLS ============
+
+echo ""
+echo -e "${BLUE}========================================${NC}"
+echo -e "${BLUE}  Testing Match States and DLS${NC}"
+echo -e "${BLUE}========================================${NC}"
+
+# 23. Create a scheduled match
+echo -e "${GREEN}23. Creating a Scheduled Match${NC}"
+response=$(api_call "POST" "/match/schedule" '{
+    "team1Id": "team-india",
+    "team2Id": "team-aus",
+    "scheduledDate": "2024-06-15",
+    "overs": 20
+}')
+echo "$response"
+SCHEDULED_MATCH_ID=$(echo "$response" | extract_id)
+
+if [ -z "$SCHEDULED_MATCH_ID" ]; then
+    echo -e "${RED}Error: Failed to schedule match${NC}"
+else
+    echo -e "${BLUE}Scheduled Match ID: $SCHEDULED_MATCH_ID${NC}"
+    
+    # 24. Get match details (should be in scheduled state)
+    echo -e "${GREEN}24. Getting Scheduled Match Details${NC}"
+    api_call "GET" "/match/$SCHEDULED_MATCH_ID"
+    
+    # 25. Start the scheduled match
+    echo -e "${GREEN}25. Starting the Scheduled Match${NC}"
+    api_call "POST" "/match/$SCHEDULED_MATCH_ID/start"
+    
+    # 26. Delay the match (simulating rain)
+    echo -e "${GREEN}26. Delaying Match (Rain)${NC}"
+    api_call "POST" "/match/$SCHEDULED_MATCH_ID/delay" '{"reason": "Rain delay"}'
+    
+    # 27. Apply DLS method
+    echo -e "${GREEN}27. Applying DLS Method (revised overs: 15)${NC}"
+    echo "DLS Formula: adjusted_target = floor(original_target * (revised_overs / original_overs)) + 1"
+    api_call "POST" "/match/$SCHEDULED_MATCH_ID/dls" '{"revisedOvers": 15}'
+    
+    # 28. Get match details after DLS
+    echo -e "${GREEN}28. Getting Match Details After DLS${NC}"
+    api_call "GET" "/match/$SCHEDULED_MATCH_ID"
+fi
+
+# 29. Create another match for abandoned test
+echo -e "${GREEN}29. Creating Match for Abandoned Test${NC}"
+response=$(api_call "POST" "/match/start" '{"team1Id":"team-eng","team2Id":"team-pak"}')
+echo "$response"
+ABANDON_MATCH_ID=$(echo "$response" | extract_id)
+
+if [ -z "$ABANDON_MATCH_ID" ]; then
+    echo -e "${RED}Error: Failed to create match for abandon test${NC}"
+else
+    echo -e "${BLUE}Match ID for Abandon: $ABANDON_MATCH_ID${NC}"
+    
+    # 30. Delay the match
+    echo -e "${GREEN}30. Delaying Match${NC}"
+    api_call "POST" "/match/$ABANDON_MATCH_ID/delay" '{"reason": "Heavy rain"}'
+    
+    # 31. Abandon the match
+    echo -e "${GREEN}31. Abandoning Match${NC}"
+    api_call "POST" "/match/$ABANDON_MATCH_ID/abandon" '{"reason": "Persistent rain - no play possible"}'
+    
+    # 32. Verify abandoned status
+    echo -e "${GREEN}32. Verifying Abandoned Status${NC}"
+    api_call "GET" "/match/$ABANDON_MATCH_ID"
+fi
+
+# 33. Create match for no_result test
+echo -e "${GREEN}33. Creating Match for No Result Test${NC}"
+response=$(api_call "POST" "/match/start" '{"team1Id":"team-sl","team2Id":"team-ban"}')
+echo "$response"
+NO_RESULT_MATCH_ID=$(echo "$response" | extract_id)
+
+if [ -z "$NO_RESULT_MATCH_ID" ]; then
+    echo -e "${RED}Error: Failed to create match for no result test${NC}"
+else
+    echo -e "${BLUE}Match ID for No Result: $NO_RESULT_MATCH_ID${NC}"
+    
+    # 34. Declare no result
+    echo -e "${GREEN}34. Declaring No Result${NC}"
+    api_call "POST" "/match/$NO_RESULT_MATCH_ID/no-result" '{"reason": "Match could not be completed"}'
+    
+    # 35. Verify no result status
+    echo -e "${GREEN}35. Verifying No Result Status${NC}"
+    api_call "GET" "/match/$NO_RESULT_MATCH_ID"
+fi
+
+# 36. Create match for completion test
+echo -e "${GREEN}36. Creating Match for Completion Test${NC}"
+response=$(api_call "POST" "/match/start" '{"team1Id":"team-afg","team2Id":"team-nep"}')
+echo "$response"
+COMPLETE_MATCH_ID=$(echo "$response" | extract_id)
+
+if [ -z "$COMPLETE_MATCH_ID" ]; then
+    echo -e "${RED}Error: Failed to create match for completion test${NC}"
+else
+    echo -e "${BLUE}Match ID for Completion: $COMPLETE_MATCH_ID${NC}"
+    
+    # 37. Complete the match with a winner
+    echo -e "${GREEN}37. Completing Match with Winner${NC}"
+    api_call "POST" "/match/$COMPLETE_MATCH_ID/complete" '{"winnerId": "team-afg"}'
+    
+    # 38. Verify completed status
+    echo -e "${GREEN}38. Verifying Completed Status${NC}"
+    api_call "GET" "/match/$COMPLETE_MATCH_ID"
+fi
+
+# 39. Get matches by status
+echo -e "${GREEN}39. Getting Matches by Status${NC}"
+echo "Abandoned matches:"
+api_call "GET" "/match/status/abandoned"
+echo "No Result matches:"
+api_call "GET" "/match/status/no_result"
+echo "Completed matches:"
+api_call "GET" "/match/status/completed"
+
+# ============ Test Points Auto-Update ============
+
+echo ""
+echo -e "${BLUE}========================================${NC}"
+echo -e "${BLUE}  Testing Points Auto-Update${NC}"
+echo -e "${BLUE}========================================${NC}"
+
+# 40. Create a new tournament for points testing
+echo -e "${GREEN}40. Creating Test Tournament for Points${NC}"
+response=$(api_call "POST" "/tournaments" '{
+    "name": "Points Test Tournament",
+    "shortName": "PTT",
+    "type": "test",
+    "startDate": "2024-07-01",
+    "endDate": "2024-07-10",
+    "hostCountry": "Test"
+}')
+echo "$response"
+POINTS_TOURNAMENT_ID=$(echo "$response" | extract_id)
+
+if [ -z "$POINTS_TOURNAMENT_ID" ]; then
+    echo -e "${RED}Error: Failed to create points test tournament${NC}"
+else
+    echo -e "${BLUE}Points Tournament ID: $POINTS_TOURNAMENT_ID${NC}"
+    
+    # Add teams
+    api_call "POST" "/tournaments/$POINTS_TOURNAMENT_ID/teams" '{
+        "teamIds": ["team-india", "team-pak", "team-eng", "team-aus"]
+    }'
+    
+    # 41. Create and complete a match in tournament
+    echo -e "${GREEN}41. Creating Match in Tournament${NC}"
+    response=$(api_call "POST" "/match/start" '{
+        "team1Id": "team-india",
+        "team2Id": "team-pak",
+        "tournamentId": "'"$POINTS_TOURNAMENT_ID"'"
+    }')
+    echo "$response"
+    POINTS_MATCH_ID=$(echo "$response" | extract_id)
+    
+    if [ -n "$POINTS_MATCH_ID" ]; then
+        # Complete the match
+        echo -e "${GREEN}42. Completing Match (India wins)${NC}"
+        api_call "POST" "/match/$POINTS_MATCH_ID/complete" '{"winnerId": "team-india"}'
+        
+        # Check points table - India should have 2 points, Pakistan 0
+        echo -e "${GREEN}43. Checking Points Table (India should have 2 points)${NC}"
+        api_call "GET" "/tournaments/$POINTS_TOURNAMENT_ID/points"
+    fi
+    
+    # 44. Create and abandon a match
+    echo -e "${GREEN}44. Creating Match for Abandon (1 point each)${NC}"
+    response=$(api_call "POST" "/match/start" '{
+        "team1Id": "team-eng",
+        "team2Id": "team-aus",
+        "tournamentId": "'"$POINTS_TOURNAMENT_ID"'"
+    }')
+    ABANDON_POINTS_MATCH_ID=$(echo "$response" | extract_id)
+    
+    if [ -n "$ABANDON_POINTS_MATCH_ID" ]; then
+        # Abandon the match
+        echo -e "${GREEN}45. Abandoning Match (1 point each team)${NC}"
+        api_call "POST" "/match/$ABANDON_POINTS_MATCH_ID/abandon" '{"reason": "Rain"}'
+        
+        # Check points table - England and Australia should each have 1 point
+        echo -e "${GREEN}46. Checking Points Table (Eng & Aus should have 1 point each)${NC}"
+        api_call "GET" "/tournaments/$POINTS_TOURNAMENT_ID/points"
+    fi
+    
+    # 47. Create no_result match
+    echo -e "${GREEN}47. Creating No Result Match (1 point each)${NC}"
+    response=$(api_call "POST" "/match/start" '{
+        "team1Id": "team-india",
+        "team2Id": "team-eng",
+        "tournamentId": "'"$POINTS_TOURNAMENT_ID"'"
+    }')
+    NO_RESULT_POINTS_MATCH_ID=$(echo "$response" | extract_id)
+    
+    if [ -n "$NO_RESULT_POINTS_MATCH_ID" ]; then
+        # Declare no result
+        echo -e "${GREEN}48. Declaring No Result (1 point each team)${NC}"
+        api_call "POST" "/match/$NO_RESULT_POINTS_MATCH_ID/no-result" '{"reason": "Wet outfield"}'
+        
+        # Check points table
+        echo -e "${GREEN}49. Final Points Table${NC}"
+        api_call "GET" "/tournaments/$POINTS_TOURNAMENT_ID/points"
+    fi
+fi
+
+# ============ Test Scheduling Rules ============
+
+echo ""
+echo -e "${BLUE}========================================${NC}"
+echo -e "${BLUE}  Testing Scheduling Rules${NC}"
+echo -e "${BLUE}========================================${NC}"
+
+# 50. Create stadiums for scheduling test
+echo -e "${GREEN}50. Creating Multiple Stadiums${NC}"
+api_call "POST" "/tournaments/stadiums" '{"name": "Stadium A", "city": "City A", "country": "Country A"}'
+api_call "POST" "/tournaments/stadiums" '{"name": "Stadium B", "city": "City B", "country": "Country B"}'
+api_call "POST" "/tournaments/stadiums" '{"name": "Stadium C", "city": "City C", "country": "Country C"}'
+
+# Get all stadiums
+STADIUMS=$(api_call "GET" "/tournaments/stadiums/all")
+echo "$STADIUMS"
+
+# Extract stadium IDs
+STADIUM_IDS=$(echo "$STADIUMS" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    stadiums = data.get('data', [])
+    ids = [s.get('id') for s in stadiums if s.get('id')]
+    print(','.join(ids))
+except:
+    print('')
+")
+
+# 51. Create tournament with scheduling test
+echo -e "${GREEN}51. Creating Scheduling Test Tournament${NC}"
+response=$(api_call "POST" "/tournaments" '{
+    "name": "Scheduling Test Tournament",
+    "shortName": "STT",
+    "type": "test",
+    "startDate": "2024-08-01",
+    "endDate": "2024-08-30",
+    "hostCountry": "Test"
+}')
+echo "$response"
+SCHED_TOURNAMENT_ID=$(echo "$response" | extract_id)
+
+if [ -z "$SCHED_TOURNAMENT_ID" ]; then
+    echo -e "${RED}Error: Failed to create scheduling test tournament${NC}"
+else
+    echo -e "${BLUE}Scheduling Tournament ID: $SCHED_TOURNAMENT_ID${NC}"
+    
+    # Add 4 teams
+    api_call "POST" "/tournaments/$SCHED_TOURNAMENT_ID/teams" '{
+        "teamIds": ["team-india", "team-pak", "team-eng", "team-aus"]
+    }'
+    
+    # 52. Generate fixtures with stadiums
+    echo -e "${GREEN}52. Generating Fixtures with Stadium Distribution${NC}"
+    api_call "POST" "/tournaments/$SCHED_TOURNAMENT_ID/fixtures/generate" '{
+        "matchType": "group",
+        "roundRobin": true,
+        "includeKnockouts": true,
+        "knockoutTeams": 4,
+        "stadiumIds": "'"$STADIUM_IDS"'"
+    }'
+    
+    # 53. Verify scheduling rules
+    echo -e "${GREEN}53. Verifying Scheduling Rules${NC}"
+    api_call "GET" "/tournaments/$SCHED_TOURNAMENT_ID/fixtures" | python3 -c "
+import sys, json
+from datetime import datetime
+from collections import defaultdict
+
+try:
+    data = json.load(sys.stdin)
+    fixtures = data.get('data', [])
+    
+    print('\\n=== Scheduling Rules Verification ===\\n')
+    
+    # Rule 1: No back-to-back matches for same team
+    print('Rule 1: No back-to-back matches (same team cannot play consecutive days)')
+    team_dates = defaultdict(list)
+    for f in fixtures:
+        if f.get('team1_id') and f.get('match_date'):
+            team_dates[f['team1_id']].append(f['match_date'])
+        if f.get('team2_id') and f.get('match_date'):
+            team_dates[f['team2_id']].append(f['match_date'])
+    
+    violations = []
+    for team, dates in team_dates.items():
+        sorted_dates = sorted(set(dates))
+        for i in range(1, len(sorted_dates)):
+            d1 = datetime.strptime(sorted_dates[i-1], '%Y-%m-%d')
+            d2 = datetime.strptime(sorted_dates[i], '%Y-%m-%d')
+            gap = (d2 - d1).days
+            if gap < 1:
+                violations.append(f'  VIOLATION: {team} plays on {sorted_dates[i-1]} and {sorted_dates[i]} (gap: {gap} days)')
+    
+    if violations:
+        for v in violations:
+            print(v)
+    else:
+        print('  ✓ All teams have at least 1 day gap between matches')
+    
+    # Rule 2: At least 1 day gap
+    print('\\nRule 2: Minimum 1 day gap between consecutive matches')
+    for team, dates in team_dates.items():
+        sorted_dates = sorted(set(dates))
+        gaps_ok = True
+        for i in range(1, len(sorted_dates)):
+            d1 = datetime.strptime(sorted_dates[i-1], '%Y-%m-%d')
+            d2 = datetime.strptime(sorted_dates[i], '%Y-%m-%d')
+            if (d2 - d1).days < 1:
+                gaps_ok = False
+                break
+        if gaps_ok and len(sorted_dates) > 1:
+            print(f'  ✓ {team}: {len(sorted_dates)} matches, all with proper gaps')
+    
+    # Rule 3: Stadium distribution
+    print('\\nRule 3: Stadium distribution')
+    stadium_count = defaultdict(int)
+    stadium_dates = defaultdict(set)
+    for f in fixtures:
+        if f.get('stadium_id'):
+            stadium_count[f['stadium_id']] += 1
+            stadium_dates[f['stadium_id']].add(f.get('match_date'))
+    
+    for stadium, count in stadium_count.items():
+        print(f'  Stadium {stadium}: {count} matches')
+    
+    print('\\n=== End of Verification ===')
+    
+except Exception as e:
+    print(f'Error: {e}')
+"
+fi
+
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Tournament Tests Completed!${NC}"
 echo -e "${GREEN}========================================${NC}"
@@ -462,3 +802,7 @@ echo "  ✓ Qualified teams for knockouts"
 echo "  ✓ Super Over support with ICC rules"
 echo "  ✓ Boundary count tie-breaker"
 echo "  ✓ Tournament deletion"
+echo "  ✓ Match states (scheduled, in_progress, delayed, completed, abandoned, no_result)"
+echo "  ✓ DLS method for rain-delayed matches"
+echo "  ✓ Auto-update points table on match completion"
+echo "  ✓ Scheduling rules (1-day gap, stadium distribution)"

@@ -135,8 +135,15 @@ const generateFixtures = (tournamentId, options = {}) => {
   let matchNumber = 1;
   let currentDate = new Date(startDate);
   
-  // Track last match date for each team
+  // Track last match date for each team (ensures no back-to-back matches)
   const teamLastMatchDate = {};
+  
+  // Track stadium usage for better distribution
+  const stadiumUsage = {};
+  stadiumIds.forEach(s => stadiumUsage[s] = 0);
+  
+  // Track matches per day for each stadium (max 1 match per stadium per day)
+  const stadiumDayUsage = {};
   
   // Generate fixtures for each group
   const groupKeys = Object.keys(groups);
@@ -160,10 +167,8 @@ const generateFixtures = (tournamentId, options = {}) => {
           tournamentId
         );
         
-        // Assign stadium (rotate through available stadiums)
-        const stadiumId = stadiumIds.length > 0 
-          ? stadiumIds[(matchNumber - 1) % stadiumIds.length] 
-          : null;
+        // Assign stadium (distribute across available stadiums, avoiding same stadium on same day)
+        const stadiumId = assignStadium(stadiumIds, validDate, stadiumUsage, stadiumDayUsage);
         
         const fixtureId = `fixture-${uuidv4()}`;
         const fixture = tournamentModel.createFixture({
@@ -180,9 +185,17 @@ const generateFixtures = (tournamentId, options = {}) => {
           stage: STAGES.GROUP
         });
         
-        // Update last match dates
+        // Update last match dates (ensures no back-to-back for same team)
         teamLastMatchDate[team1Id] = validDate;
         teamLastMatchDate[team2Id] = validDate;
+        
+        // Update stadium usage
+        if (stadiumId) {
+          stadiumUsage[stadiumId]++;
+          const dateStr = validDate.toISOString().split('T')[0];
+          if (!stadiumDayUsage[stadiumId]) stadiumDayUsage[stadiumId] = new Set();
+          stadiumDayUsage[stadiumId].add(dateStr);
+        }
         
         fixtures.push(fixture);
         matchNumber++;
@@ -209,6 +222,31 @@ const generateFixtures = (tournamentId, options = {}) => {
   }
   
   return fixtures;
+};
+
+/**
+ * Assign stadium with proper distribution
+ * - Avoids same stadium on same day
+ * - Balances usage across stadiums
+ */
+const assignStadium = (stadiumIds, matchDate, stadiumUsage, stadiumDayUsage) => {
+  if (stadiumIds.length === 0) return null;
+  
+  const dateStr = matchDate.toISOString().split('T')[0];
+  
+  // Filter out stadiums already used on this day
+  const availableStadiums = stadiumIds.filter(s => {
+    if (!stadiumDayUsage[s]) return true;
+    return !stadiumDayUsage[s].has(dateStr);
+  });
+  
+  // If all stadiums are used on this day, allow reuse but pick least used
+  const candidates = availableStadiums.length > 0 ? availableStadiums : stadiumIds;
+  
+  // Sort by usage count (ascending) to pick least used stadium
+  candidates.sort((a, b) => (stadiumUsage[a] || 0) - (stadiumUsage[b] || 0));
+  
+  return candidates[0];
 };
 
 /**
@@ -437,13 +475,14 @@ const findValidMatchDate = (startDate, team1Id, team2Id, teamLastMatchDate, tour
 
 /**
  * Check if there's minimum gap days between two dates
+ * Returns true if dates are at least minGapDays apart
  */
 const hasMinimumGap = (date1, date2, minGapDays) => {
   const d1 = new Date(date1);
   const d2 = new Date(date2);
   const diffTime = Math.abs(d2 - d1);
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays >= minGapDays;
+  return diffDays > minGapDays;  // Must be MORE than minGapDays (not equal)
 };
 
 /**
