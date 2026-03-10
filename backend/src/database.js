@@ -217,6 +217,97 @@ const initDatabase = () => {
       )
     `);
 
+    // ============ Tournament Tables ============
+
+    // Tournaments table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tournaments (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        short_name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        host_country TEXT,
+        status TEXT DEFAULT 'upcoming',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Stadiums table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS stadiums (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        city TEXT NOT NULL,
+        country TEXT NOT NULL,
+        capacity INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Tournament teams (teams participating in a tournament)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tournament_teams (
+        id TEXT PRIMARY KEY,
+        tournament_id TEXT NOT NULL,
+        team_id TEXT NOT NULL,
+        group_name TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+        FOREIGN KEY (team_id) REFERENCES teams(id),
+        UNIQUE(tournament_id, team_id)
+      )
+    `);
+
+    // Fixtures table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS fixtures (
+        id TEXT PRIMARY KEY,
+        tournament_id TEXT NOT NULL,
+        match_number INTEGER NOT NULL,
+        team1_id TEXT NOT NULL,
+        team2_id TEXT NOT NULL,
+        match_date TEXT NOT NULL,
+        stadium_id TEXT,
+        match_type TEXT DEFAULT 'group',
+        group_name TEXT,
+        round_number INTEGER DEFAULT 1,
+        match_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+        FOREIGN KEY (team1_id) REFERENCES teams(id),
+        FOREIGN KEY (team2_id) REFERENCES teams(id),
+        FOREIGN KEY (stadium_id) REFERENCES stadiums(id),
+        FOREIGN KEY (match_id) REFERENCES matches(id)
+      )
+    `);
+
+    // Points table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS points_table (
+        id TEXT PRIMARY KEY,
+        tournament_id TEXT NOT NULL,
+        team_id TEXT NOT NULL,
+        group_name TEXT,
+        matches_played INTEGER DEFAULT 0,
+        won INTEGER DEFAULT 0,
+        lost INTEGER DEFAULT 0,
+        tied INTEGER DEFAULT 0,
+        no_result INTEGER DEFAULT 0,
+        points INTEGER DEFAULT 0,
+        runs_for INTEGER DEFAULT 0,
+        runs_against INTEGER DEFAULT 0,
+        overs_for REAL DEFAULT 0,
+        overs_against REAL DEFAULT 0,
+        net_run_rate REAL DEFAULT 0,
+        last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+        FOREIGN KEY (team_id) REFERENCES teams(id),
+        UNIQUE(tournament_id, team_id)
+      )
+    `);
+
     console.log('Database tables created successfully');
   } catch (error) {
     console.error('Error initializing database tables:', error.message);

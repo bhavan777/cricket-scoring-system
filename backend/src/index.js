@@ -29,6 +29,7 @@ app.use((req, res, next) => {
 app.use('/api/teams', require('./routes/teams'));
 app.use('/api/match', require('./routes/match'));
 app.use('/api/live', require('./routes/live'));
+app.use('/api/tournaments', require('./routes/tournaments'));
 
 // Health check
 app.get('/health', (req, res) => {
@@ -39,7 +40,7 @@ app.get('/health', (req, res) => {
 app.get('/api', (req, res) => {
   res.json({
     name: 'Cricket Scoring API',
-    version: '1.0.0',
+    version: '2.0.0',
     endpoints: {
       teams: {
         'GET /api/teams': 'Get all teams',
@@ -65,6 +66,23 @@ app.get('/api', (req, res) => {
         'GET /api/match/:matchId/innings/:inningsId/bowlers': 'Get bowler stats',
         'GET /api/match/:matchId/innings/:inningsId/wickets': 'Get fall of wickets',
         'GET /api/match/:matchId/innings/:inningsId/balls': 'Get ball by ball data'
+      },
+      tournaments: {
+        'POST /api/tournaments': 'Create a new tournament',
+        'GET /api/tournaments': 'Get all tournaments',
+        'GET /api/tournaments/:id': 'Get tournament by ID',
+        'DELETE /api/tournaments/:id': 'Delete tournament',
+        'POST /api/tournaments/:tournamentId/teams': 'Add teams to tournament',
+        'GET /api/tournaments/:tournamentId/teams': 'Get tournament teams',
+        'DELETE /api/tournaments/:tournamentId/teams/:teamId': 'Remove team from tournament',
+        'POST /api/tournaments/:tournamentId/fixtures/generate': 'Generate fixtures',
+        'POST /api/tournaments/fixtures': 'Create a single fixture',
+        'GET /api/tournaments/:tournamentId/fixtures': 'Get tournament fixtures',
+        'POST /api/tournaments/fixtures/:fixtureId/link-match': 'Link match to fixture',
+        'GET /api/tournaments/:tournamentId/points': 'Get points table',
+        'POST /api/tournaments/:tournamentId/points/update': 'Update points after match',
+        'POST /api/tournaments/stadiums': 'Create a stadium',
+        'GET /api/tournaments/stadiums/all': 'Get all stadiums'
       }
     }
   });
