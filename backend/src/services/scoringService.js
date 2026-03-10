@@ -44,6 +44,11 @@ const startMatch = (team1Id, team2Id, options = {}) => {
   `);
   stateStmt.run(matchId);
   
+  // Link to fixture if provided
+  if (options.fixtureId) {
+    db.prepare('UPDATE fixtures SET match_id = ? WHERE id = ?').run(matchId, options.fixtureId);
+  }
+  
   return getMatchDetails(matchId);
 };
 
@@ -68,6 +73,11 @@ const scheduleMatch = (team1Id, team2Id, scheduledDate, options = {}) => {
     options.tournamentId || null,
     options.fixtureId || null
   );
+  
+  // Link to fixture if provided
+  if (options.fixtureId) {
+    db.prepare('UPDATE fixtures SET match_id = ? WHERE id = ?').run(matchId, options.fixtureId);
+  }
   
   return getMatchDetails(matchId);
 };
@@ -202,20 +212,37 @@ const abandonMatch = (matchId, reason = 'Match abandoned') => {
   
   const updatedMatch = matchModel.updateStatus(matchId, MATCH_STATUS.ABANDONED);
   
+  let rescheduleInfo = null;
+  
   // Auto-update points table if part of a tournament
   if (match.tournament_id) {
-    autoUpdatePointsTable(match.tournament_id, matchId, {
-      status: MATCH_STATUS.ABANDONED
-    });
+    // Try to reschedule
+    try {
+      rescheduleInfo = tournamentService.rescheduleMatch(match.tournament_id, matchId);
+    } catch (error) {
+      console.error('Rescheduling failed:', error.message);
+    }
+    
+    // If rescheduling is not possible, give points
+    if (!rescheduleInfo) {
+      autoUpdatePointsTable(match.tournament_id, matchId, {
+        status: MATCH_STATUS.ABANDONED
+      });
+    }
   }
   
   sseService.broadcastUpdate(matchId, 'match_abandoned', {
     matchId,
     reason,
+    rescheduled: !!rescheduleInfo,
+    rescheduleInfo,
     matchState: getMatchDetails(matchId)
   });
   
-  return getMatchDetails(matchId);
+  return {
+    ...getMatchDetails(matchId),
+    rescheduleInfo
+  };
 };
 
 /**

@@ -788,6 +788,93 @@ except Exception as e:
 "
 fi
 
+# ============ Test Auto-Rescheduling for Abandoned Matches ============
+
+echo ""
+echo -e "${BLUE}========================================${NC}"
+echo -e "${BLUE}  Testing Auto-Rescheduling for Abandoned Matches${NC}"
+echo -e "${BLUE}========================================${NC}"
+
+# 54. Create a tournament with short duration to test rescheduling
+echo -e "${GREEN}54. Creating Reschedule Test Tournament${NC}"
+response=$(api_call "POST" "/tournaments" '{
+    "name": "Reschedule Test Tournament",
+    "shortName": "RTT",
+    "type": "test",
+    "startDate": "2024-09-01",
+    "endDate": "2024-09-10",
+    "hostCountry": "Test"
+}')
+echo "$response"
+RTT_ID=$(echo "$response" | extract_id)
+
+if [ -z "$RTT_ID" ]; then
+    echo -e "${RED}Error: Failed to create reschedule test tournament${NC}"
+else
+    echo -e "${BLUE}Reschedule Tournament ID: $RTT_ID${NC}"
+    
+    # Add 2 teams
+    api_call "POST" "/tournaments/$RTT_ID/teams" '{
+        "teamIds": ["team-india", "team-pak"]
+    }'
+    
+    # Generate one fixture
+    echo -e "${GREEN}55. Generating Fixtures${NC}"
+    api_call "POST" "/tournaments/$RTT_ID/fixtures/generate" '{
+        "matchType": "group",
+        "roundRobin": true,
+        "includeKnockouts": false
+    }'
+    
+    # Get the fixture ID
+    echo -e "${GREEN}56. Getting Fixture ID${NC}"
+    RESPONSE=$(api_call "GET" "/tournaments/$RTT_ID/fixtures")
+    FIXTURE_ID=$(echo "$RESPONSE" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('data', [{}])[0].get('id', ''))")
+    echo -e "${BLUE}Fixture ID: $FIXTURE_ID${NC}"
+    
+    # Start a match for this fixture
+    echo -e "${GREEN}56b. Starting Match for Fixture${NC}"
+    RESPONSE=$(api_call "POST" "/match/start" "{
+        \"team1Id\": \"team-india\",
+        \"team2Id\": \"team-pak\",
+        \"tournamentId\": \"$RTT_ID\",
+        \"fixtureId\": \"$FIXTURE_ID\"
+    }")
+    MATCH_ID=$(echo "$RESPONSE" | extract_id)
+    echo -e "${BLUE}Match ID: $MATCH_ID${NC}"
+    
+    # 57. Abandon the match and check for rescheduling
+    echo -e "${GREEN}57. Abandoning Match (should auto-reschedule)${NC}"
+    response=$(api_call "POST" "/match/$MATCH_ID/abandon" '{"reason": "Rain"}')
+    echo "$response"
+    
+    # 58. Check match details (should be scheduled again)
+    echo -e "${GREEN}58. Verifying Rescheduled Match Details${NC}"
+    api_call "GET" "/match/$MATCH_ID"
+    
+    # 59. Check points table (should be empty/no points yet)
+    echo -e "${GREEN}59. Checking Points Table (should be 0 points)${NC}"
+    api_call "GET" "/tournaments/$RTT_ID/points"
+    
+    # 60. Now make rescheduling impossible by setting tournament end date to today
+    echo -e "${GREEN}60. Updating Tournament End Date to Today (to make rescheduling impossible)${NC}"
+    TODAY=$(date +%Y-%m-%d)
+    api_call "PUT" "/tournaments/$RTT_ID" "{\"endDate\": \"$TODAY\"}"
+    
+    # Start the match again
+    echo -e "${GREEN}61. Starting the Rescheduled Match${NC}"
+    api_call "POST" "/match/$MATCH_ID/start"
+    
+    # Abandon the match again
+    echo -e "${GREEN}62. Abandoning Match Again (should NOT reschedule, but give points)${NC}"
+    response=$(api_call "POST" "/match/$MATCH_ID/abandon" '{"reason": "Persistent Rain"}')
+    echo "$response"
+    
+    # 63. Check points table (should have 1 point each)
+    echo -e "${GREEN}63. Checking Points Table (should have 1 point each)${NC}"
+    api_call "GET" "/tournaments/$RTT_ID/points"
+fi
+
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Tournament Tests Completed!${NC}"
 echo -e "${GREEN}========================================${NC}"
@@ -806,3 +893,4 @@ echo "  ✓ Match states (scheduled, in_progress, delayed, completed, abandoned,
 echo "  ✓ DLS method for rain-delayed matches"
 echo "  ✓ Auto-update points table on match completion"
 echo "  ✓ Scheduling rules (1-day gap, stadium distribution)"
+echo "  ✓ Auto-rescheduling for abandoned matches"

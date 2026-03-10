@@ -39,6 +39,18 @@ const createTournament = (tournamentData) => {
 };
 
 /**
+ * Update tournament details
+ */
+const updateTournament = (tournamentId, updates) => {
+  const tournament = tournamentModel.findTournamentById(tournamentId);
+  if (!tournament) {
+    throw new Error('Tournament not found');
+  }
+  
+  return tournamentModel.updateTournament(tournamentId, updates);
+};
+
+/**
  * Get all tournaments
  */
 const getAllTournaments = () => {
@@ -112,13 +124,18 @@ const generateFixtures = (tournamentId, options = {}) => {
     throw new Error('Need at least 2 teams to generate fixtures');
   }
   
-  const { 
+  let { 
     matchType = 'group',
     stadiumIds = [],
     roundRobin = true,
     includeKnockouts = true,
     knockoutTeams = 4  // Number of teams qualifying for knockouts
   } = options;
+  
+  // Ensure stadiumIds is an array
+  if (typeof stadiumIds === 'string') {
+    stadiumIds = stadiumIds.split(',').filter(id => id.trim().length > 0);
+  }
   
   const startDate = new Date(tournament.start_date);
   const teamIds = teams.map(t => t.team_id);
@@ -810,6 +827,98 @@ const removeTeamFromTournament = (tournamentId, teamId) => {
 };
 
 /**
+ * Find a valid new date for an abandoned match and reschedule it
+ */
+const rescheduleMatch = (tournamentId, matchId) => {
+  const tournament = tournamentModel.findTournamentById(tournamentId);
+  const match = matchModel.findById(matchId);
+  const fixture = db.prepare('SELECT * FROM fixtures WHERE match_id = ?').get(matchId);
+  
+  if (!tournament || !match || !fixture) {
+    throw new Error('Tournament, match, or fixture not found');
+  }
+  
+  const team1Id = match.team1_id;
+  const team2Id = match.team2_id;
+  
+  // Search for a new date within tournament range starting from tomorrow
+  let candidateDate = new Date();
+  candidateDate.setDate(candidateDate.getDate() + 1);
+  const endDate = new Date(tournament.end_date);
+  
+  // Get all existing fixtures in this tournament to check for stadium usage
+  const allFixtures = tournamentModel.findFixturesByTournament(tournamentId);
+  const stadiumIds = tournamentModel.findAllStadiums().map(s => s.id);
+  
+  // Track stadium usage for each day
+  const stadiumDayUsage = {};
+  allFixtures.forEach(f => {
+    if (f.stadium_id && f.match_date) {
+      if (!stadiumDayUsage[f.stadium_id]) stadiumDayUsage[f.stadium_id] = new Set();
+      stadiumDayUsage[f.stadium_id].add(f.match_date);
+    }
+  });
+
+  let foundDate = null;
+  let foundStadiumId = null;
+
+  while (candidateDate <= endDate) {
+    const dateStr = candidateDate.toISOString().split('T')[0];
+    
+    // Check 1-day gap for both teams using existing method
+    const team1Dates = tournamentModel.findTeamMatchDates(tournamentId, team1Id);
+    const team2Dates = tournamentModel.findTeamMatchDates(tournamentId, team2Id);
+    
+    let team1GapOk = true;
+    for (const d of team1Dates) {
+      if (!hasMinimumGap(d, candidateDate, 1)) {
+        team1GapOk = false;
+        break;
+      }
+    }
+    
+    let team2GapOk = true;
+    for (const d of team2Dates) {
+      if (!hasMinimumGap(d, candidateDate, 1)) {
+        team2GapOk = false;
+        break;
+      }
+    }
+    
+    if (team1GapOk && team2GapOk) {
+      // Find a stadium not used on this day
+      for (const sId of stadiumIds) {
+        if (!stadiumDayUsage[sId] || !stadiumDayUsage[sId].has(dateStr)) {
+          foundDate = dateStr;
+          foundStadiumId = sId;
+          break;
+        }
+      }
+    }
+    
+    if (foundDate) break;
+    candidateDate.setDate(candidateDate.getDate() + 1);
+  }
+  
+  if (foundDate) {
+    // Update match and fixture
+    db.prepare('UPDATE matches SET scheduled_date = ?, status = ?, started_at = NULL, completed_at = NULL WHERE id = ?')
+      .run(foundDate, 'scheduled', matchId);
+    
+    db.prepare('UPDATE fixtures SET match_date = ?, stadium_id = ? WHERE match_id = ?')
+      .run(foundDate, foundStadiumId, matchId);
+      
+    return {
+      matchId,
+      newDate: foundDate,
+      stadiumId: foundStadiumId
+    };
+  }
+  
+  return null; // Could not reschedule
+};
+
+/**
  * Record knockout match result and advance winner
  */
 const recordKnockoutResult = (fixtureId, winnerId, isSuperOver = false) => {
@@ -841,6 +950,7 @@ const recordKnockoutResult = (fixtureId, winnerId, isSuperOver = false) => {
 
 module.exports = {
   createTournament,
+  updateTournament,
   getAllTournaments,
   getTournamentById,
   addTeamsToTournament,
@@ -858,5 +968,6 @@ module.exports = {
   updateKnockoutFixtures,
   getQualifiedTeams,
   recordKnockoutResult,
+  rescheduleMatch,
   STAGES
 };

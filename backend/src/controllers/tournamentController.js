@@ -16,6 +16,15 @@ const createTournament = (req, res) => {
   }
 };
 
+const updateTournament = (req, res) => {
+  try {
+    const tournament = tournamentService.updateTournament(req.params.id, req.body);
+    res.json({ success: true, data: tournament });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
+
 const getAllTournaments = (req, res) => {
   try {
     const tournaments = tournamentService.getAllTournaments();
@@ -295,6 +304,7 @@ const completeSuperOverMatch = (req, res) => {
 module.exports = {
   // Tournament CRUD
   createTournament,
+  updateTournament,
   getAllTournaments,
   getTournamentById,
   deleteTournament,

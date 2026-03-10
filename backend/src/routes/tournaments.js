@@ -51,6 +51,9 @@ router.get('/', tournamentController.getAllTournaments);
 // Get tournament by ID
 router.get('/:id', tournamentController.getTournamentById);
 
+// Update tournament
+router.put('/:id', tournamentController.updateTournament);
+
 // Delete tournament
 router.delete('/:id', tournamentController.deleteTournament);
 
