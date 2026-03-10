@@ -1,0 +1,76 @@
+{
+  "teams": [
+    {
+      "id": "team-india",
+      "name": "India",
+      "shortName": "IND",
+      "players": [
+        { "id": "ind-1", "name": "Rohit Sharma", "role": "Batsman", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm off break" },
+        { "id": "ind-2", "name": "Virat Kohli", "role": "Batsman", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm medium" },
+        { "id": "ind-3", "name": "Suryakumar Yadav", "role": "Batsman", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm medium" },
+        { "id": "ind-4", "name": "KL Rahul", "role": "Wicket-keeper", "battingStyle": "Right-hand", "bowlingStyle": "N/A" },
+        { "id": "ind-5", "name": "Hardik Pandya", "role": "All-rounder", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm fast-medium" },
+        { "id": "ind-6", "name": "Ravindra Jadeja", "role": "All-rounder", "battingStyle": "Left-hand", "bowlingStyle": "Left-arm orthodox" },
+        { "id": "ind-7", "name": "Rishabh Pant", "role": "Wicket-keeper", "battingStyle": "Left-hand", "bowlingStyle": "N/A" },
+        { "id": "ind-8", "name": "Jasprit Bumrah", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm fast" },
+        { "id": "ind-9", "name": "Mohammed Shami", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm fast" },
+        { "id": "ind-10", "name": "Yuzvendra Chahal", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm leg break" },
+        { "id": "ind-11", "name": "Bhuvneshwar Kumar", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm medium-fast" }
+      ]
+    },
+    {
+      "id": "team-sa",
+      "name": "South Africa",
+      "shortName": "SA",
+      "players": [
+        { "id": "sa-1", "name": "Quinton de Kock", "role": "Wicket-keeper", "battingStyle": "Left-hand", "bowlingStyle": "N/A" },
+        { "id": "sa-2", "name": "Reeza Hendricks", "role": "Batsman", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm medium" },
+        { "id": "sa-3", "name": "Aiden Markram", "role": "Batsman", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm off break" },
+        { "id": "sa-4", "name": "Heinrich Klaasen", "role": "Wicket-keeper", "battingStyle": "Right-hand", "bowlingStyle": "N/A" },
+        { "id": "sa-5", "name": "David Miller", "role": "Batsman", "battingStyle": "Left-hand", "bowlingStyle": "Right-arm off break" },
+        { "id": "sa-6", "name": "Tristan Stubbs", "role": "Batsman", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm leg break" },
+        { "id": "sa-7", "name": "Marco Jansen", "role": "All-rounder", "battingStyle": "Left-hand", "bowlingStyle": "Left-arm fast-medium" },
+        { "id": "sa-8", "name": "Kagiso Rabada", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm fast" },
+        { "id": "sa-9", "name": "Anrich Nortje", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm fast" },
+        { "id": "sa-10", "name": "Keshav Maharaj", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Left-arm orthodox" },
+        { "id": "sa-11", "name": "Tabraiz Shamsi", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Left-arm wrist spin" }
+      ]
+    },
+    {
+      "id": "team-eng",
+      "name": "England",
+      "shortName": "ENG",
+      "players": [
+        { "id": "eng-1", "name": "Jos Buttler", "role": "Wicket-keeper", "battingStyle": "Right-hand", "bowlingStyle": "N/A" },
+        { "id": "eng-2", "name": "Phil Salt", "role": "Wicket-keeper", "battingStyle": "Right-hand", "bowlingStyle": "N/A" },
+        { "id": "eng-3", "name": "Joe Root", "role": "Batsman", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm off break" },
+        { "id": "eng-4", "name": "Harry Brook", "role": "Batsman", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm medium" },
+        { "id": "eng-5", "name": "Ben Stokes", "role": "All-rounder", "battingStyle": "Left-hand", "bowlingStyle": "Right-arm fast-medium" },
+        { "id": "eng-6", "name": "Liam Livingstone", "role": "All-rounder", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm off break" },
+        { "id": "eng-7", "name": "Moeen Ali", "role": "All-rounder", "battingStyle": "Left-hand", "bowlingStyle": "Right-arm off break" },
+        { "id": "eng-8", "name": "Jofra Archer", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm fast" },
+        { "id": "eng-9", "name": "Mark Wood", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm fast" },
+        { "id": "eng-10", "name": "Adil Rashid", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm leg break" },
+        { "id": "eng-11", "name": "Chris Woakes", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm fast-medium" }
+      ]
+    },
+    {
+      "id": "team-nz",
+      "name": "New Zealand",
+      "shortName": "NZ",
+      "players": [
+        { "id": "nz-1", "name": "Devon Conway", "role": "Wicket-keeper", "battingStyle": "Left-hand", "bowlingStyle": "N/A" },
+        { "id": "nz-2", "name": "Finn Allen", "role": "Batsman", "battingStyle": "Right-hand", "bowlingStyle": "N/A" },
+        { "id": "nz-3", "name": "Kane Williamson", "role": "Batsman", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm off break" },
+        { "id": "nz-4", "name": "Daryl Mitchell", "role": "All-rounder", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm medium" },
+        { "id": "nz-5", "name": "Glenn Phillips", "role": "Wicket-keeper", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm off break" },
+        { "id": "nz-6", "name": "Mark Chapman", "role": "Batsman", "battingStyle": "Left-hand", "bowlingStyle": "Left-arm orthodox" },
+        { "id": "nz-7", "name": "Mitchell Santner", "role": "All-rounder", "battingStyle": "Left-hand", "bowlingStyle": "Left-arm orthodox" },
+        { "id": "nz-8", "name": "Tim Southee", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm fast-medium" },
+        { "id": "nz-9", "name": "Trent Boult", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Left-arm fast-medium" },
+        { "id": "nz-10", "name": "Lockie Ferguson", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm fast" },
+        { "id": "nz-11", "name": "Ish Sodhi", "role": "Bowler", "battingStyle": "Right-hand", "bowlingStyle": "Right-arm leg break" }
+      ]
+    }
+  ]
+}

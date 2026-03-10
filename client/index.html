@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cricket Live Score - Match Dashboard</title>
+    <style>
+        :root {
+            --primary-bg: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-main: #202124;
+            --text-sub: #70757a;
+            --accent-blue: #1a73e8;
+            --accent-red: #d93025;
+            --border-color: #dadce0;
+            --shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+        }
+
+        body {
+            font-family: 'Google Sans', Roboto, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--primary-bg);
+            color: var(--text-main);
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 15px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .live-badge {
+            background-color: var(--accent-red);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .match-card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .team-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+        }
+
+        .team-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .team-logo {
+            width: 32px;
+            height: 32px;
+            background-color: #eee;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .team-name {
+            font-size: 18px;
+            font-weight: 500;
+        }
+
+        .team-score {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .match-status {
+            font-size: 14px;
+            color: var(--text-sub);
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--text-sub);
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab.active {
+            color: var(--accent-blue);
+            border-bottom-color: var(--accent-blue);
+        }
+
+        .stats-section {
+            background: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            padding: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        th {
+            text-align: left;
+            color: var(--text-sub);
+            font-weight: 500;
+            font-size: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td {
+            padding: 12px 0;
+            font-size: 14px;
+            border-bottom: 1px solid #f1f3f4;
+        }
+
+        .on-strike::after {
+            content: '*';
+            color: var(--accent-blue);
+            margin-left: 4px;
+        }
+
+        .current-partnership {
+            background: #f1f3f4;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin-bottom: 15px;
+        }
+
+        .last-balls {
+            display: flex;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .ball-circle {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 500;
+            background: #eee;
+        }
+
+        .ball-wicket { background: var(--accent-red); color: white; }
+        .ball-boundary { background: var(--accent-blue); color: white; }
+
+        .loading-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .error-message {
+            color: var(--accent-red);
+            text-align: center;
+            margin-top: 50px;
+        }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading-screen">
+        <h3>Connecting to Live Score...</h3>
+        <p>Please enter Match ID to start</p>
+        <input type="text" id="match-id-input" placeholder="Enter Match ID" style="padding: 8px; margin-bottom: 10px;">
+        <button id="connect-btn" style="padding: 8px 16px; background: var(--accent-blue); color: white; border: none; border-radius: 4px; cursor: pointer;">Connect</button>
+    </div>
+
+    <div id="main-content" class="container hidden">
+        <div class="header">
+            <div id="live-indicator" class="live-badge">Live</div>
+            <div id="match-title" style="font-size: 14px; color: var(--text-sub);">T20 Match</div>
+        </div>
+
+        <div class="match-card">
+            <div class="team-row">
+                <div class="team-info">
+                    <div class="team-logo" id="team1-logo">?</div>
+                    <div class="team-name" id="team1-name">Team 1</div>
+                </div>
+                <div class="team-score" id="team1-score">0/0 (0.0 ov)</div>
+            </div>
+            <div class="team-row">
+                <div class="team-info">
+                    <div class="team-logo" id="team2-logo">?</div>
+                    <div class="team-name" id="team2-name">Team 2</div>
+                </div>
+                <div class="team-score" id="team2-score">Yet to bat</div>
+            </div>
+            <div class="match-status" id="match-status-text">Match not started</div>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active">LIVE</div>
+            <div class="tab">SCORECARD</div>
+            <div class="tab">COMMENTARY</div>
+        </div>
+
+        <div class="stats-section">
+            <div id="live-stats">
+                <div class="current-partnership">
+                    Current Partnership: <span id="partnership-runs">0</span> (<span id="partnership-balls">0</span>)
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>BATTER</th>
+                            <th>R</th>
+                            <th>B</th>
+                            <th>4s</th>
+                            <th>6s</th>
+                            <th>SR</th>
+                        </tr>
+                    </thead>
+                    <tbody id="batsmen-table">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>BOWLER</th>
+                            <th>O</th>
+                            <th>M</th>
+                            <th>R</th>
+                            <th>W</th>
+                            <th>ECON</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bowler-table">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+
+                <div style="font-size: 14px; color: var(--text-sub); margin-top: 15px;">
+                    Last 12 balls:
+                    <div class="last-balls" id="recent-balls">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        const API_BASE = 'http://localhost:3001/api';
+
+        const connectBtn = document.getElementById('connect-btn');
+        const matchIdInput = document.getElementById('match-id-input');
+        const loadingScreen = document.getElementById('loading');
+        const mainContent = document.getElementById('main-content');
+
+        connectBtn.addEventListener('click', () => {
+            const matchId = matchIdInput.value.trim();
+            if (matchId) {
+                startLiveUpdates(matchId);
+            }
+        });
+
+        function startLiveUpdates(matchId) {
+            loadingScreen.innerHTML = '<h3>Connecting to match ' + matchId + '...</h3>';
+            
+            // Initial fetch for current state
+            fetch(`${API_BASE}/live/${matchId}/summary`)
+                .then(res => res.json())
+                .then(response => {
+                    if (response.success) {
+                        updateUI(response.data);
+                        loadingScreen.classList.add('hidden');
+                        mainContent.classList.remove('hidden');
+                        setupSSE(matchId);
+                    } else {
+                        alert('Match not found: ' + response.error);
+                        location.reload();
+                    }
+                })
+                .catch(err => {
+                    console.error('Fetch error:', err);
+                    alert('Could not connect to API. Make sure the server is running on port 3001.');
+                });
+        }
+
+        function setupSSE(matchId) {
+            if (eventSource) eventSource.close();
+            
+            eventSource = new EventSource(`${API_BASE}/live/${matchId}/events`);
+            
+            eventSource.addEventListener('ball_recorded', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Ball recorded:', data);
+                // After ball recorded, we can either use the data in event or fetch summary
+                // For simplicity and accuracy, let's fetch summary again
+                fetchSummary(matchId);
+            });
+
+            eventSource.addEventListener('innings_complete', (event) => {
+                fetchSummary(matchId);
+            });
+
+            eventSource.addEventListener('match_complete', (event) => {
+                fetchSummary(matchId);
+                document.getElementById('live-indicator').classList.add('hidden');
+            });
+
+            eventSource.onerror = (err) => {
+                console.error('SSE error:', err);
+            };
+        }
+
+        function fetchSummary(matchId) {
+            fetch(`${API_BASE}/live/${matchId}/summary`)
+                .then(res => res.json())
+                .then(response => {
+                    if (response.success) {
+                        updateUI(response.data);
+                    }
+                });
+        }
+
+        function updateUI(summary) {
+            // Team Names and Logos
+            document.getElementById('team1-name').textContent = summary.team1.name;
+            document.getElementById('team2-name').textContent = summary.team2.name;
+            document.getElementById('team1-logo').textContent = summary.team1.shortName;
+            document.getElementById('team2-logo').textContent = summary.team2.shortName;
+
+            // Scores
+            const ing1 = summary.innings.find(i => i.inningsNumber === 1);
+            const ing2 = summary.innings.find(i => i.inningsNumber === 2);
+
+            if (ing1) {
+                document.getElementById('team1-score').textContent = `${ing1.score.runs}/${ing1.score.wickets} (${ing1.score.overs} ov)`;
+            }
+
+            if (ing2) {
+                document.getElementById('team2-score').textContent = `${ing2.score.runs}/${ing2.score.wickets} (${ing2.score.overs} ov)`;
+            } else if (summary.status === 'in_progress' && summary.currentInnings === 1) {
+                document.getElementById('team2-score').textContent = 'Yet to bat';
+            }
+
+            // Status Text
+            let statusText = '';
+            if (summary.status === 'not_started') {
+                statusText = 'Match starting soon';
+            } else if (summary.status === 'in_progress') {
+                const battingTeam = summary.currentInnings === 1 ? summary.team1.name : summary.team2.name;
+                statusText = `${battingTeam} is batting`;
+                if (summary.toss.winner) {
+                    const tossWinner = summary.toss.winner === summary.team1.id ? summary.team1.name : summary.team2.name;
+                    statusText += ` • ${tossWinner} won toss & chose to ${summary.toss.decision}`;
+                }
+            } else {
+                statusText = 'Match Completed';
+            }
+            document.getElementById('match-status-text').textContent = statusText;
+
+            // Current Batsmen
+            const currentInnings = summary.innings.find(i => i.inningsNumber === summary.currentInnings);
+            const batsmenTbody = document.getElementById('batsmen-table');
+            batsmenTbody.innerHTML = '';
+
+            if (currentInnings && currentInnings.currentBatsmen) {
+                let totalPartnership = 0;
+                let totalBalls = 0;
+                
+                currentInnings.currentBatsmen.forEach(b => {
+                    const row = document.createElement('tr');
+                    const sr = b.balls > 0 ? ((b.runs / b.balls) * 100).toFixed(1) : '0.0';
+                    
+                    row.innerHTML = `
+                        <td class="${b.isOnStrike ? 'on-strike' : ''}">${b.name}</td>
+                        <td>${b.runs}</td>
+                        <td>${b.balls}</td>
+                        <td>${b.fours}</td>
+                        <td>${b.sixes}</td>
+                        <td>${sr}</td>
+                    `;
+                    batsmenTbody.appendChild(row);
+                    
+                    totalPartnership += b.runs;
+                    totalBalls += b.balls;
+                });
+                
+                document.getElementById('partnership-runs').textContent = totalPartnership;
+                document.getElementById('partnership-balls').textContent = totalBalls;
+            }
+
+            // Current Bowler
+            const bowlerTbody = document.getElementById('bowler-table');
+            bowlerTbody.innerHTML = '';
+            if (currentInnings && currentInnings.currentBowler) {
+                const b = currentInnings.currentBowler;
+                const row = document.createElement('tr');
+                const econ = parseFloat(b.overs) > 0 ? (b.runs / parseFloat(b.overs)).toFixed(1) : '0.0';
+                
+                row.innerHTML = `
+                    <td>${b.name}</td>
+                    <td>${b.overs}</td>
+                    <td>${b.maidens}</td>
+                    <td>${b.runs}</td>
+                    <td>${b.wickets}</td>
+                    <td>${econ}</td>
+                `;
+                bowlerTbody.appendChild(row);
+            }
+
+            // Recent Balls (Simulated for this demo using last 12 entries from detailed balls if available)
+            // For now, let's just show some placeholders or fetch detailed ball data
+            updateRecentBalls(summary.matchId, summary.currentInnings);
+        }
+
+        function updateRecentBalls(matchId, inningsNumber) {
+            const innings = inningsNumber || 1;
+            fetch(`${API_BASE}/match/${matchId}/innings/${innings}/balls`)
+                .then(res => res.json())
+                .then(response => {
+                    if (response.success) {
+                        const balls = response.data.slice(-12);
+                        const container = document.getElementById('recent-balls');
+                        container.innerHTML = '';
+                        
+                        balls.forEach(ball => {
+                            const div = document.createElement('div');
+                            div.className = 'ball-circle';
+                            
+                            let content = ball.runs_scored;
+                            if (ball.is_wicket) {
+                                div.classList.add('ball-wicket');
+                                content = 'W';
+                            } else if (ball.extra_type === 'wide') {
+                                content = ball.extras + 'wd';
+                            } else if (ball.extra_type === 'no_ball') {
+                                content = ball.extras + 'nb';
+                            } else if (ball.runs_scored === 4 || ball.runs_scored === 6) {
+                                div.classList.add('ball-boundary');
+                            }
+                            
+                            div.textContent = content;
+                            container.appendChild(div);
+                        });
+                    }
+                });
+        }
+    </script>
+</body>
+</html>
