@@ -133,12 +133,19 @@ const findFixtureById = (fixtureId) => {
 };
 
 const createFixture = (fixtureData) => {
-  const { id, tournamentId, matchNumber, team1Id, team2Id, matchDate, stadiumId, matchType, groupName, roundNumber } = fixtureData;
+  const { 
+    id, tournamentId, matchNumber, team1Id, team2Id, matchDate, stadiumId, 
+    matchType, groupName, roundNumber, stage, stagePosition,
+    team1QualificationRule, team2QualificationRule
+  } = fixtureData;
   const stmt = db.prepare(`
-    INSERT INTO fixtures (id, tournament_id, match_number, team1_id, team2_id, match_date, stadium_id, match_type, group_name, round_number)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO fixtures (id, tournament_id, match_number, team1_id, team2_id, match_date, stadium_id, 
+      match_type, group_name, round_number, stage, stage_position, team1_qualification_rule, team2_qualification_rule)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(id, tournamentId, matchNumber, team1Id, team2Id, matchDate, stadiumId, matchType || 'group', groupName, roundNumber || 1);
+  stmt.run(id, tournamentId, matchNumber, team1Id, team2Id, matchDate, stadiumId, 
+    matchType || 'group', groupName, roundNumber || 1, stage || 'group', stagePosition || null,
+    team1QualificationRule || null, team2QualificationRule || null);
   return findFixtureById(id);
 };
 
@@ -152,6 +159,10 @@ const updateFixture = (id, updates) => {
   if (updates.matchType) { fields.push('match_type = ?'); values.push(updates.matchType); }
   if (updates.groupName) { fields.push('group_name = ?'); values.push(updates.groupName); }
   if (updates.roundNumber) { fields.push('round_number = ?'); values.push(updates.roundNumber); }
+  if (updates.team1Id) { fields.push('team1_id = ?'); values.push(updates.team1Id); }
+  if (updates.team2Id) { fields.push('team2_id = ?'); values.push(updates.team2Id); }
+  if (updates.winnerId) { fields.push('winner_id = ?'); values.push(updates.winnerId); }
+  if (updates.isSuperOver !== undefined) { fields.push('is_super_over = ?'); values.push(updates.isSuperOver ? 1 : 0); }
   
   if (fields.length > 0) {
     values.push(id);
@@ -173,6 +184,46 @@ const findTeamMatchDates = (tournamentId, teamId) => {
     WHERE tournament_id = ? AND (team1_id = ? OR team2_id = ?)
     ORDER BY match_date
   `).all(tournamentId, teamId, teamId).map(row => row.match_date);
+};
+
+// Find fixtures by stage
+const findFixturesByStage = (tournamentId, stage) => {
+  return db.prepare(`
+    SELECT f.*, 
+           t1.name as team1_name, t1.short_name as team1_short_name,
+           t2.name as team2_name, t2.short_name as team2_short_name,
+           s.name as stadium_name, s.city as stadium_city
+    FROM fixtures f
+    LEFT JOIN teams t1 ON f.team1_id = t1.id
+    LEFT JOIN teams t2 ON f.team2_id = t2.id
+    LEFT JOIN stadiums s ON f.stadium_id = s.id
+    WHERE f.tournament_id = ? AND f.stage = ?
+    ORDER BY f.stage_position, f.match_date
+  `).all(tournamentId, stage);
+};
+
+// Find knockout fixtures that need team assignment
+const findPendingKnockoutFixtures = (tournamentId) => {
+  return db.prepare(`
+    SELECT f.*, 
+           t1.name as team1_name, t1.short_name as team1_short_name,
+           t2.name as team2_name, t2.short_name as team2_short_name
+    FROM fixtures f
+    LEFT JOIN teams t1 ON f.team1_id = t1.id
+    LEFT JOIN teams t2 ON f.team2_id = t2.id
+    WHERE f.tournament_id = ? AND f.stage != 'group' AND (f.team1_id IS NULL OR f.team2_id IS NULL)
+    ORDER BY f.stage_position
+  `).all(tournamentId);
+};
+
+// Get last match date in tournament
+const getLastMatchDate = (tournamentId) => {
+  const result = db.prepare(`
+    SELECT MAX(match_date) as last_date 
+    FROM fixtures 
+    WHERE tournament_id = ?
+  `).get(tournamentId);
+  return result?.last_date || null;
 };
 
 // ============ Points Table ============
@@ -259,6 +310,9 @@ module.exports = {
   updateFixture,
   deleteFixture,
   findTeamMatchDates,
+  findFixturesByStage,
+  findPendingKnockoutFixtures,
+  getLastMatchDate,
   
   // Points Table
   findPointsTable,

@@ -7,6 +7,14 @@ const tournamentModel = require('../models/tournamentModel');
 const teamModel = require('../models/teamModel');
 const { db } = require('../database');
 
+// Tournament stage constants
+const STAGES = {
+  GROUP: 'group',
+  QUARTER_FINAL: 'quarter_final',
+  SEMI_FINAL: 'semi_final',
+  FINAL: 'final'
+};
+
 /**
  * Create a new tournament
  */
@@ -107,8 +115,9 @@ const generateFixtures = (tournamentId, options = {}) => {
   const { 
     matchType = 'group',
     stadiumIds = [],
-    groupNames = [],
-    roundRobin = true
+    roundRobin = true,
+    includeKnockouts = true,
+    knockoutTeams = 4  // Number of teams qualifying for knockouts
   } = options;
   
   const startDate = new Date(tournament.start_date);
@@ -147,7 +156,8 @@ const generateFixtures = (tournamentId, options = {}) => {
           currentDate,
           team1Id,
           team2Id,
-          teamLastMatchDate
+          teamLastMatchDate,
+          tournamentId
         );
         
         // Assign stadium (rotate through available stadiums)
@@ -166,7 +176,8 @@ const generateFixtures = (tournamentId, options = {}) => {
           stadiumId,
           matchType,
           groupName: groupName !== 'default' ? groupName : null,
-          roundNumber: 1
+          roundNumber: 1,
+          stage: STAGES.GROUP
         });
         
         // Update last match dates
@@ -185,7 +196,166 @@ const generateFixtures = (tournamentId, options = {}) => {
     }
   }
   
+  // Generate knockout stage placeholder fixtures
+  if (includeKnockouts && teams.length >= 4) {
+    const knockoutFixtures = generateKnockoutFixtures(
+      tournamentId, 
+      currentDate, 
+      matchNumber, 
+      stadiumIds,
+      knockoutTeams
+    );
+    fixtures.push(...knockoutFixtures);
+  }
+  
   return fixtures;
+};
+
+/**
+ * Generate knockout stage fixtures (quarter-finals, semi-finals, final)
+ */
+const generateKnockoutFixtures = (tournamentId, startDate, startMatchNumber, stadiumIds, qualifyingTeams = 4) => {
+  const fixtures = [];
+  let matchNumber = startMatchNumber;
+  let currentDate = new Date(startDate);
+  
+  // Determine knockout structure based on qualifying teams
+  const hasQuarterFinals = qualifyingTeams === 8;
+  const numQuarterFinals = hasQuarterFinals ? 4 : 0;
+  const numSemiFinals = 2;
+  
+  // Add rest day between group stage and knockouts
+  currentDate.setDate(currentDate.getDate() + 2);
+  
+  // Quarter Finals (if 8 teams qualify)
+  if (hasQuarterFinals) {
+    for (let i = 0; i < numQuarterFinals; i++) {
+      const fixtureId = `fixture-${uuidv4()}`;
+      const stadiumId = stadiumIds.length > 0 ? stadiumIds[i % stadiumIds.length] : null;
+      
+      const fixture = tournamentModel.createFixture({
+        id: fixtureId,
+        tournamentId,
+        matchNumber,
+        team1Id: null,  // To be determined after group stage
+        team2Id: null,
+        matchDate: currentDate.toISOString().split('T')[0],
+        stadiumId,
+        matchType: 'knockout',
+        groupName: null,
+        roundNumber: 1,
+        stage: STAGES.QUARTER_FINAL,
+        stagePosition: i + 1,
+        team1QualificationRule: `QF${i + 1}_Team1`,  // e.g., "Winner Group A" or "2nd Group B"
+        team2QualificationRule: `QF${i + 1}_Team2`
+      });
+      
+      fixtures.push(fixture);
+      matchNumber++;
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    // Rest day before semi-finals
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  
+  // Semi Finals
+  for (let i = 0; i < numSemiFinals; i++) {
+    const fixtureId = `fixture-${uuidv4()}`;
+    const stadiumId = stadiumIds.length > 0 ? stadiumIds[i % stadiumIds.length] : null;
+    
+    const fixture = tournamentModel.createFixture({
+      id: fixtureId,
+      tournamentId,
+      matchNumber,
+      team1Id: null,
+      team2Id: null,
+      matchDate: currentDate.toISOString().split('T')[0],
+      stadiumId,
+      matchType: 'knockout',
+      groupName: null,
+      roundNumber: 1,
+      stage: STAGES.SEMI_FINAL,
+      stagePosition: i + 1,
+      team1QualificationRule: `SF${i + 1}_Team1`,
+      team2QualificationRule: `SF${i + 1}_Team2`
+    });
+    
+    fixtures.push(fixture);
+    matchNumber++;
+    currentDate.setDate(currentDate.getDate() + 2);  // Rest day between semis
+  }
+  
+  // Rest day before final
+  currentDate.setDate(currentDate.getDate() + 1);
+  
+  // Final
+  const finalFixtureId = `fixture-${uuidv4()}`;
+  const finalStadiumId = stadiumIds.length > 0 ? stadiumIds[0] : null;  // Main stadium for final
+  
+  const finalFixture = tournamentModel.createFixture({
+    id: finalFixtureId,
+    tournamentId,
+    matchNumber,
+    team1Id: null,
+    team2Id: null,
+    matchDate: currentDate.toISOString().split('T')[0],
+    stadiumId: finalStadiumId,
+    matchType: 'knockout',
+    groupName: null,
+    roundNumber: 1,
+    stage: STAGES.FINAL,
+    stagePosition: 1,
+    team1QualificationRule: 'FINAL_Team1',
+    team2QualificationRule: 'FINAL_Team2'
+  });
+  
+  fixtures.push(finalFixture);
+  
+  return fixtures;
+};
+
+/**
+ * Update knockout fixtures with qualified teams
+ */
+const updateKnockoutFixtures = (tournamentId, qualificationRules) => {
+  // qualificationRules is a map like:
+  // { "QF1_Team1": "team-india", "QF1_Team2": "team-eng", ... }
+  
+  const pendingFixtures = tournamentModel.findPendingKnockoutFixtures(tournamentId);
+  
+  for (const fixture of pendingFixtures) {
+    const team1Id = qualificationRules[fixture.team1_qualification_rule];
+    const team2Id = qualificationRules[fixture.team2_qualification_rule];
+    
+    if (team1Id && team2Id) {
+      tournamentModel.updateFixture(fixture.id, { team1Id, team2Id });
+    }
+  }
+  
+  return tournamentModel.findFixturesByTournament(tournamentId);
+};
+
+/**
+ * Get qualified teams for knockout stages based on points table
+ */
+const getQualifiedTeams = (tournamentId, numTeams = 4) => {
+  const pointsTable = tournamentModel.findPointsTable(tournamentId);
+  
+  // Sort by points (desc), then by NRR (desc)
+  const sorted = pointsTable.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    return b.net_run_rate - a.net_run_rate;
+  });
+  
+  return sorted.slice(0, numTeams).map(entry => ({
+    teamId: entry.team_id,
+    teamName: entry.team_name,
+    position: sorted.indexOf(entry) + 1,
+    points: entry.points,
+    nrr: entry.net_run_rate,
+    groupName: entry.group_name
+  }));
 };
 
 /**
@@ -212,18 +382,12 @@ const generateRoundRobinPairings = (teamIds) => {
 /**
  * Find a valid match date ensuring 1-day gap for both teams
  */
-const findValidMatchDate = (startDate, team1Id, team2Id, teamLastMatchDate) => {
+const findValidMatchDate = (startDate, team1Id, team2Id, teamLastMatchDate, tournamentId) => {
   let candidateDate = new Date(startDate);
   
   // Check existing fixtures in the tournament for these teams
-  const team1Dates = tournamentModel.findTeamMatchDates(
-    teamLastMatchDate.tournamentId || '', 
-    team1Id
-  );
-  const team2Dates = tournamentModel.findTeamMatchDates(
-    teamLastMatchDate.tournamentId || '', 
-    team2Id
-  );
+  const team1Dates = tournamentModel.findTeamMatchDates(tournamentId, team1Id);
+  const team2Dates = tournamentModel.findTeamMatchDates(tournamentId, team2Id);
   
   // Also consider dates tracked in current generation
   const team1LastDate = teamLastMatchDate[team1Id];
@@ -233,9 +397,31 @@ const findValidMatchDate = (startDate, team1Id, team2Id, teamLastMatchDate) => {
   while (maxAttempts > 0) {
     const dateStr = candidateDate.toISOString().split('T')[0];
     
-    // Check if both teams have at least 1 day gap
-    const team1CanPlay = !team1LastDate || hasMinimumGap(team1LastDate, candidateDate, 1);
-    const team2CanPlay = !team2LastDate || hasMinimumGap(team2LastDate, candidateDate, 1);
+    // Check existing dates from database
+    let team1CanPlay = true;
+    let team2CanPlay = true;
+    
+    for (const existingDate of team1Dates) {
+      if (!hasMinimumGap(existingDate, candidateDate, 1)) {
+        team1CanPlay = false;
+        break;
+      }
+    }
+    
+    for (const existingDate of team2Dates) {
+      if (!hasMinimumGap(existingDate, candidateDate, 1)) {
+        team2CanPlay = false;
+        break;
+      }
+    }
+    
+    // Check dates from current generation
+    if (team1CanPlay && team1LastDate && !hasMinimumGap(team1LastDate, candidateDate, 1)) {
+      team1CanPlay = false;
+    }
+    if (team2CanPlay && team2LastDate && !hasMinimumGap(team2LastDate, candidateDate, 1)) {
+      team2CanPlay = false;
+    }
     
     if (team1CanPlay && team2CanPlay) {
       return candidateDate;
@@ -276,7 +462,7 @@ const shuffleArray = (array) => {
  * Create a single fixture manually
  */
 const createFixture = (fixtureData) => {
-  const { tournamentId, team1Id, team2Id, matchDate, stadiumId, matchType, groupName, roundNumber } = fixtureData;
+  const { tournamentId, team1Id, team2Id, matchDate, stadiumId, matchType, groupName, roundNumber, stage, stagePosition } = fixtureData;
   
   // Validate tournament exists
   const tournament = tournamentModel.findTournamentById(tournamentId);
@@ -284,27 +470,33 @@ const createFixture = (fixtureData) => {
     throw new Error('Tournament not found');
   }
   
-  // Validate teams exist
-  const team1 = teamModel.findById(team1Id);
-  const team2 = teamModel.findById(team2Id);
-  if (!team1 || !team2) {
-    throw new Error('One or both teams not found');
+  // Validate teams exist (if provided)
+  if (team1Id) {
+    const team1 = teamModel.findById(team1Id);
+    if (!team1) throw new Error('Team 1 not found');
   }
   
-  // Validate 1-day gap constraint
-  const team1Dates = tournamentModel.findTeamMatchDates(tournamentId, team1Id);
-  const team2Dates = tournamentModel.findTeamMatchDates(tournamentId, team2Id);
-  const newDate = new Date(matchDate);
+  if (team2Id) {
+    const team2 = teamModel.findById(team2Id);
+    if (!team2) throw new Error('Team 2 not found');
+  }
   
-  for (const existingDate of team1Dates) {
-    if (!hasMinimumGap(existingDate, newDate, 1)) {
-      throw new Error(`Team ${team1.name} already has a match within 1 day of ${matchDate}`);
+  // Validate 1-day gap constraint (only if both teams are provided)
+  if (team1Id && team2Id) {
+    const team1Dates = tournamentModel.findTeamMatchDates(tournamentId, team1Id);
+    const team2Dates = tournamentModel.findTeamMatchDates(tournamentId, team2Id);
+    const newDate = new Date(matchDate);
+    
+    for (const existingDate of team1Dates) {
+      if (!hasMinimumGap(existingDate, newDate, 1)) {
+        throw new Error(`Team already has a match within 1 day of ${matchDate}`);
+      }
     }
-  }
-  
-  for (const existingDate of team2Dates) {
-    if (!hasMinimumGap(existingDate, newDate, 1)) {
-      throw new Error(`Team ${team2.name} already has a match within 1 day of ${matchDate}`);
+    
+    for (const existingDate of team2Dates) {
+      if (!hasMinimumGap(existingDate, newDate, 1)) {
+        throw new Error(`Team already has a match within 1 day of ${matchDate}`);
+      }
     }
   }
   
@@ -324,15 +516,30 @@ const createFixture = (fixtureData) => {
     stadiumId,
     matchType: matchType || 'group',
     groupName,
-    roundNumber: roundNumber || 1
+    roundNumber: roundNumber || 1,
+    stage: stage || STAGES.GROUP,
+    stagePosition
   });
 };
 
 /**
- * Update points table after a match
+ * Update points table after a match with proper NRR calculation
  */
 const updatePointsAfterMatch = (tournamentId, matchId, result) => {
-  const { winnerId, loserId, isTie, isNoResult, team1Runs, team2Runs, team1Overs, team2Overs } = result;
+  const { 
+    winnerId, 
+    loserId, 
+    isTie, 
+    isNoResult, 
+    team1Runs, 
+    team2Runs, 
+    team1Overs, 
+    team2Overs,
+    team1Wickets,
+    team2Wickets,
+    isSuperOver,
+    superOverWinnerId
+  } = result;
   
   // Get teams from match
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
@@ -341,20 +548,57 @@ const updatePointsAfterMatch = (tournamentId, matchId, result) => {
   const team1Id = match.team1_id;
   const team2Id = match.team2_id;
   
-  if (isTie) {
-    // Both teams get 1 point
+  // For knockout matches, don't update points table
+  const fixture = db.prepare('SELECT * FROM fixtures WHERE match_id = ?').get(matchId);
+  if (fixture && fixture.stage !== STAGES.GROUP) {
+    // Just update the fixture with winner
+    if (winnerId || superOverWinnerId) {
+      tournamentModel.updateFixture(fixture.id, { 
+        winnerId: winnerId || superOverWinnerId,
+        isSuperOver: isSuperOver ? 1 : 0
+      });
+    }
+    return tournamentModel.findFixturesByTournament(tournamentId);
+  }
+  
+  // Calculate overs properly for NRR
+  // In T20, if team is all out, they face full 20 overs for NRR calculation
+  const oversTeam1 = team1Wickets >= 10 ? 20 : (team1Overs || 20);
+  const oversTeam2 = team2Wickets >= 10 ? 20 : (team2Overs || 20);
+  
+  if (isTie && !isSuperOver) {
+    // Tie without super over - both teams get 1 point
     updateTeamPoints(tournamentId, team1Id, { 
       matchesPlayed: 1, tied: 1, points: 1,
       runsFor: team1Runs, runsAgainst: team2Runs,
-      oversFor: team1Overs, oversAgainst: team2Overs
+      oversFor: oversTeam1, oversAgainst: oversTeam2
     });
     updateTeamPoints(tournamentId, team2Id, { 
       matchesPlayed: 1, tied: 1, points: 1,
       runsFor: team2Runs, runsAgainst: team1Runs,
-      oversFor: team2Overs, oversAgainst: team1Overs
+      oversFor: oversTeam2, oversAgainst: oversTeam1
+    });
+  } else if (isTie && isSuperOver && superOverWinnerId) {
+    // Tie with super over - winner gets 2 points, loser gets 0
+    // But for NRR, the main match runs/overs are used (super over doesn't count for NRR)
+    const loserId = superOverWinnerId === team1Id ? team2Id : team1Id;
+    
+    updateTeamPoints(tournamentId, superOverWinnerId, { 
+      matchesPlayed: 1, won: 1, points: 2,
+      runsFor: superOverWinnerId === team1Id ? team1Runs : team2Runs, 
+      runsAgainst: superOverWinnerId === team1Id ? team2Runs : team1Runs,
+      oversFor: superOverWinnerId === team1Id ? oversTeam1 : oversTeam2, 
+      oversAgainst: superOverWinnerId === team1Id ? oversTeam2 : oversTeam1
+    });
+    updateTeamPoints(tournamentId, loserId, { 
+      matchesPlayed: 1, lost: 1, points: 0,
+      runsFor: loserId === team1Id ? team1Runs : team2Runs, 
+      runsAgainst: loserId === team1Id ? team2Runs : team1Runs,
+      oversFor: loserId === team1Id ? oversTeam1 : oversTeam2, 
+      oversAgainst: loserId === team1Id ? oversTeam2 : oversTeam1
     });
   } else if (isNoResult) {
-    // Both teams get 1 point
+    // Both teams get 1 point, no NRR impact
     updateTeamPoints(tournamentId, team1Id, { 
       matchesPlayed: 1, noResult: 1, points: 1 
     });
@@ -364,9 +608,9 @@ const updatePointsAfterMatch = (tournamentId, matchId, result) => {
   } else if (winnerId) {
     const loserId = winnerId === team1Id ? team2Id : team1Id;
     const winnerRuns = winnerId === team1Id ? team1Runs : team2Runs;
-    const winnerOvers = winnerId === team1Id ? team1Overs : team2Overs;
+    const winnerOvers = winnerId === team1Id ? oversTeam1 : oversTeam2;
     const loserRuns = winnerId === team1Id ? team2Runs : team1Runs;
-    const loserOvers = winnerId === team1Id ? team2Overs : team1Overs;
+    const loserOvers = winnerId === team1Id ? oversTeam2 : oversTeam1;
     
     // Winner gets 2 points
     updateTeamPoints(tournamentId, winnerId, { 
@@ -414,7 +658,8 @@ const updateTeamPoints = (tournamentId, teamId, updates) => {
 };
 
 /**
- * Recalculate Net Run Rate for all teams
+ * Recalculate Net Run Rate for all teams (ICC standard formula)
+ * NRR = (Total Runs Scored / Total Overs Faced) - (Total Runs Conceded / Total Overs Bowled)
  */
 const recalculateNRR = (tournamentId) => {
   const pointsTable = tournamentModel.findPointsTable(tournamentId);
@@ -425,13 +670,14 @@ const recalculateNRR = (tournamentId) => {
     const oversFor = parseFloat(entry.overs_for) || 0;
     const oversAgainst = parseFloat(entry.overs_against) || 0;
     
-    // NRR = (Runs Scored / Overs Faced) - (Runs Conceded / Overs Bowled)
+    // ICC Standard NRR calculation
+    // Run Rate = Runs / Overs
     const runRateFor = oversFor > 0 ? runsFor / oversFor : 0;
     const runRateAgainst = oversAgainst > 0 ? runsAgainst / oversAgainst : 0;
     const nrr = runRateFor - runRateAgainst;
     
     tournamentModel.updatePointsTable(tournamentId, entry.team_id, { 
-      netRunRate: parseFloat(nrr.toFixed(3)) 
+      netRunRate: parseFloat(nrr.toFixed(4))  // ICC uses 4 decimal places
     });
   }
 };
@@ -472,7 +718,7 @@ const getTournamentFixtures = (tournamentId) => {
 };
 
 /**
- * Get points table for a tournament
+ * Get points table for a tournament (sorted by points, then NRR)
  */
 const getPointsTable = (tournamentId, groupName = null) => {
   return tournamentModel.findPointsTable(tournamentId, groupName);
@@ -524,6 +770,36 @@ const removeTeamFromTournament = (tournamentId, teamId) => {
   return tournamentModel.removeTeamFromTournament(tournamentId, teamId);
 };
 
+/**
+ * Record knockout match result and advance winner
+ */
+const recordKnockoutResult = (fixtureId, winnerId, isSuperOver = false) => {
+  const fixture = tournamentModel.findFixtureById(fixtureId);
+  if (!fixture) throw new Error('Fixture not found');
+  
+  // Update fixture with winner
+  tournamentModel.updateFixture(fixtureId, { 
+    winnerId,
+    isSuperOver: isSuperOver ? 1 : 0
+  });
+  
+  // If this was a semi-final, update the final fixture
+  if (fixture.stage === STAGES.SEMI_FINAL) {
+    const tournamentFixtures = tournamentModel.findFixturesByStage(fixture.tournament_id, STAGES.FINAL);
+    if (tournamentFixtures.length > 0) {
+      const finalFixture = tournamentFixtures[0];
+      // Determine which position in the final
+      if (fixture.stage_position === 1) {
+        tournamentModel.updateFixture(finalFixture.id, { team1Id: winnerId });
+      } else {
+        tournamentModel.updateFixture(finalFixture.id, { team2Id: winnerId });
+      }
+    }
+  }
+  
+  return tournamentModel.findFixtureById(fixtureId);
+};
+
 module.exports = {
   createTournament,
   getAllTournaments,
@@ -539,5 +815,9 @@ module.exports = {
   deleteTournament,
   linkMatchToFixture,
   getTournamentTeams,
-  removeTeamFromTournament
+  removeTeamFromTournament,
+  updateKnockoutFixtures,
+  getQualifiedTeams,
+  recordKnockoutResult,
+  STAGES
 };

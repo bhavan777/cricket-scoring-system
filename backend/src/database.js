@@ -266,20 +266,64 @@ const initDatabase = () => {
         id TEXT PRIMARY KEY,
         tournament_id TEXT NOT NULL,
         match_number INTEGER NOT NULL,
-        team1_id TEXT NOT NULL,
-        team2_id TEXT NOT NULL,
+        team1_id TEXT,
+        team2_id TEXT,
         match_date TEXT NOT NULL,
         stadium_id TEXT,
         match_type TEXT DEFAULT 'group',
         group_name TEXT,
         round_number INTEGER DEFAULT 1,
         match_id TEXT,
+        stage TEXT DEFAULT 'group',
+        stage_position INTEGER,
+        team1_qualification_rule TEXT,
+        team2_qualification_rule TEXT,
+        winner_id TEXT,
+        is_super_over INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
         FOREIGN KEY (team1_id) REFERENCES teams(id),
         FOREIGN KEY (team2_id) REFERENCES teams(id),
         FOREIGN KEY (stadium_id) REFERENCES stadiums(id),
-        FOREIGN KEY (match_id) REFERENCES matches(id)
+        FOREIGN KEY (match_id) REFERENCES matches(id),
+        FOREIGN KEY (winner_id) REFERENCES teams(id)
+      )
+    `);
+
+    // Super overs table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS super_overs (
+        id TEXT PRIMARY KEY,
+        match_id TEXT NOT NULL,
+        super_over_number INTEGER DEFAULT 1,
+        batting_team_id TEXT NOT NULL,
+        bowling_team_id TEXT NOT NULL,
+        total_runs INTEGER DEFAULT 0,
+        total_wickets INTEGER DEFAULT 0,
+        is_complete INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (match_id) REFERENCES matches(id),
+        FOREIGN KEY (batting_team_id) REFERENCES teams(id),
+        FOREIGN KEY (bowling_team_id) REFERENCES teams(id)
+      )
+    `);
+
+    // Super over balls table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS super_over_balls (
+        id TEXT PRIMARY KEY,
+        super_over_id TEXT NOT NULL,
+        ball_number INTEGER NOT NULL,
+        batsman_id TEXT NOT NULL,
+        bowler_id TEXT NOT NULL,
+        runs_scored INTEGER DEFAULT 0,
+        is_wicket INTEGER DEFAULT 0,
+        extra_type TEXT,
+        extra_runs INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (super_over_id) REFERENCES super_overs(id),
+        FOREIGN KEY (batsman_id) REFERENCES players(id),
+        FOREIGN KEY (bowler_id) REFERENCES players(id)
       )
     `);
 

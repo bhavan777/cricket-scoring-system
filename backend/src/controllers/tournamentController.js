@@ -3,6 +3,7 @@
  */
 
 const tournamentService = require('../services/tournamentService');
+const superOverService = require('../services/superOverService');
 
 // ============ Tournament CRUD ============
 
@@ -176,6 +177,121 @@ const getAllStadiums = (req, res) => {
   }
 };
 
+// ============ Knockout Stages ============
+
+const getQualifiedTeams = (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const { numTeams } = req.query;
+    
+    const qualified = tournamentService.getQualifiedTeams(tournamentId, parseInt(numTeams) || 4);
+    res.json({ success: true, data: qualified });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const updateKnockoutFixtures = (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const { qualificationRules } = req.body;
+    
+    if (!qualificationRules) {
+      return res.status(400).json({ success: false, error: 'qualificationRules is required' });
+    }
+    
+    const fixtures = tournamentService.updateKnockoutFixtures(tournamentId, qualificationRules);
+    res.json({ success: true, data: fixtures });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
+
+const recordKnockoutResult = (req, res) => {
+  try {
+    const { fixtureId } = req.params;
+    const { winnerId, isSuperOver } = req.body;
+    
+    if (!winnerId) {
+      return res.status(400).json({ success: false, error: 'winnerId is required' });
+    }
+    
+    const fixture = tournamentService.recordKnockoutResult(fixtureId, winnerId, isSuperOver);
+    res.json({ success: true, data: fixture });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
+
+// ============ Super Over ============
+
+const startSuperOver = (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const { battingTeamId, bowlingTeamId, strikerId, nonStrikerId, bowlerId } = req.body;
+    
+    if (!battingTeamId || !bowlingTeamId || !strikerId || !nonStrikerId || !bowlerId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'battingTeamId, bowlingTeamId, strikerId, nonStrikerId, and bowlerId are required' 
+      });
+    }
+    
+    const superOver = superOverService.startSuperOver(matchId, battingTeamId, bowlingTeamId, strikerId, nonStrikerId, bowlerId);
+    res.status(201).json({ success: true, data: superOver });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
+
+const recordSuperOverBall = (req, res) => {
+  try {
+    const { superOverId } = req.params;
+    const ballData = req.body;
+    
+    const result = superOverService.recordSuperOverBall(superOverId, ballData);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
+
+const getSuperOverResult = (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const result = superOverService.getSuperOverResult(matchId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const determineSuperOverWinner = (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const winnerId = superOverService.determineSuperOverWinner(matchId);
+    res.json({ success: true, data: { winnerId, needsAnotherSuperOver: winnerId === null } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const completeSuperOverMatch = (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const { winnerId } = req.body;
+    
+    if (!winnerId) {
+      return res.status(400).json({ success: false, error: 'winnerId is required' });
+    }
+    
+    const result = superOverService.completeSuperOverSequence(matchId, winnerId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
+
 module.exports = {
   // Tournament CRUD
   createTournament,
@@ -200,5 +316,17 @@ module.exports = {
   
   // Stadiums
   createStadium,
-  getAllStadiums
+  getAllStadiums,
+  
+  // Knockout Stages
+  getQualifiedTeams,
+  updateKnockoutFixtures,
+  recordKnockoutResult,
+  
+  // Super Over
+  startSuperOver,
+  recordSuperOverBall,
+  getSuperOverResult,
+  determineSuperOverWinner,
+  completeSuperOverMatch
 };
