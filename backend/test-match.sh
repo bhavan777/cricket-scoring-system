@@ -23,9 +23,10 @@ api_call() {
     local endpoint=$2
     local data=$3
     
-    echo -e "${YELLOW}>>> $method $endpoint${NC}"
+    # Echo debug info to stderr
+    echo -e "${YELLOW}>>> $method $endpoint${NC}" >&2
     if [ -n "$data" ]; then
-        echo "    Data: $data"
+        echo "    Data: $data" >&2
     fi
     
     if [ "$method" = "GET" ]; then
@@ -36,9 +37,17 @@ api_call() {
             -d "$data")
     fi
     
-    echo "    Response: $response"
-    echo ""
+    # Still echo to stderr for visual confirmation
+    echo "    Response: $response" >&2
+    echo "" >&2
+    
+    # Echo to stdout for capturing
     echo "$response"
+}
+
+# Helper to extract ID from JSON response
+extract_id() {
+    python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('data', {}).get('id', '') if isinstance(data.get('data'), dict) else '')"
 }
 
 # Wait for user confirmation between steps
@@ -68,11 +77,9 @@ wait_step
 # Step 4: Start a new match
 echo -e "${GREEN}Step 4: Start a new match - India vs South Africa${NC}"
 echo "============================================================"
-response=$(curl -s -X POST "$BASE_URL/match/start" \
-    -H "Content-Type: application/json" \
-    -d '{"team1Id":"team-india","team2Id":"team-sa"}')
+response=$(api_call "POST" "/match/start" '{"team1Id":"team-india","team2Id":"team-sa"}')
 echo "$response"
-MATCH_ID=$(echo "$response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+MATCH_ID=$(echo "$response" | extract_id)
 echo ""
 echo -e "${YELLOW}Match ID: $MATCH_ID${NC}"
 wait_step
@@ -218,7 +225,7 @@ echo -e "${GREEN}Step 15: Get batsman stats for innings${NC}"
 echo "============================================"
 # First get the innings ID from the match
 INNINGS_RESPONSE=$(curl -s "$BASE_URL/match/$MATCH_ID")
-INNINGS_ID=$(echo "$INNINGS_RESPONSE" | grep -o '"id":"[^"]*"' | head -2 | tail -1 | cut -d'"' -f4)
+INNINGS_ID=$(echo "$INNINGS_RESPONSE" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('data', {}).get('innings', [{}])[0].get('id', ''))")
 api_call "GET" "/match/$MATCH_ID/innings/$INNINGS_ID/batsmen"
 wait_step
 

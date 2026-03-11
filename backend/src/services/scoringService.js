@@ -8,20 +8,95 @@ const cricketRules = require('./cricketRules');
 const sseService = require('./sseService');
 const matchModel = require('../models/matchModel');
 const teamModel = require('../models/teamModel');
+const tournamentService = require('./tournamentService');
+
+// Import MATCH_STATUS constants
+const { MATCH_STATUS, isFinalState, isIntermediateState } = matchModel;
 
 /**
  * Start a new match
  */
-const startMatch = (team1Id, team2Id) => {
+const startMatch = (team1Id, team2Id, options = {}) => {
   const matchId = uuidv4();
   const now = new Date().toISOString();
   
   const stmt = db.prepare(`
-    INSERT INTO matches (id, team1_id, team2_id, status, started_at)
-    VALUES (?, ?, ?, 'in_progress', ?)
+    INSERT INTO matches (id, team1_id, team2_id, status, started_at, scheduled_date, original_overs, tournament_id, fixture_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
-  stmt.run(matchId, team1Id, team2Id, now);
+  stmt.run(
+    matchId, 
+    team1Id, 
+    team2Id, 
+    MATCH_STATUS.IN_PROGRESS, 
+    now,
+    options.scheduledDate || now.split('T')[0],
+    options.overs || 20,
+    options.tournamentId || null,
+    options.fixtureId || null
+  );
+  
+  // Initialize match state
+  const stateStmt = db.prepare(`
+    INSERT INTO match_state (match_id, current_innings, current_over, current_ball)
+    VALUES (?, 1, 0, 0)
+  `);
+  stateStmt.run(matchId);
+  
+  // Link to fixture if provided
+  if (options.fixtureId) {
+    db.prepare('UPDATE fixtures SET match_id = ? WHERE id = ?').run(matchId, options.fixtureId);
+  }
+  
+  return getMatchDetails(matchId);
+};
+
+/**
+ * Schedule a match (create without starting)
+ */
+const scheduleMatch = (team1Id, team2Id, scheduledDate, options = {}) => {
+  const matchId = uuidv4();
+  
+  const stmt = db.prepare(`
+    INSERT INTO matches (id, team1_id, team2_id, status, scheduled_date, original_overs, tournament_id, fixture_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  
+  stmt.run(
+    matchId, 
+    team1Id, 
+    team2Id, 
+    MATCH_STATUS.SCHEDULED,
+    scheduledDate,
+    options.overs || 20,
+    options.tournamentId || null,
+    options.fixtureId || null
+  );
+  
+  // Link to fixture if provided
+  if (options.fixtureId) {
+    db.prepare('UPDATE fixtures SET match_id = ? WHERE id = ?').run(matchId, options.fixtureId);
+  }
+  
+  return getMatchDetails(matchId);
+};
+
+/**
+ * Start a scheduled match
+ */
+const startScheduledMatch = (matchId) => {
+  const match = matchModel.findById(matchId);
+  if (!match) throw new Error('Match not found');
+  
+  if (match.status !== MATCH_STATUS.SCHEDULED) {
+    throw new Error(`Cannot start match with status: ${match.status}`);
+  }
+  
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE matches SET status = ?, started_at = ? WHERE id = ?
+  `).run(MATCH_STATUS.IN_PROGRESS, now, matchId);
   
   // Initialize match state
   const stateStmt = db.prepare(`
@@ -31,6 +106,272 @@ const startMatch = (team1Id, team2Id) => {
   stateStmt.run(matchId);
   
   return getMatchDetails(matchId);
+};
+
+/**
+ * Delay a match (e.g., due to rain)
+ */
+const delayMatch = (matchId, reason = 'Weather delay') => {
+  const match = matchModel.findById(matchId);
+  if (!match) throw new Error('Match not found');
+  
+  if (isFinalState(match.status)) {
+    throw new Error(`Cannot delay match with final status: ${match.status}`);
+  }
+  
+  const updatedMatch = matchModel.updateStatus(matchId, MATCH_STATUS.MATCH_DELAYED);
+  
+  sseService.broadcastUpdate(matchId, 'match_delayed', {
+    matchId,
+    reason,
+    matchState: getMatchDetails(matchId)
+  });
+  
+  return getMatchDetails(matchId);
+};
+
+/**
+ * Apply DLS method to adjust target
+ * Simplified DLS: adjusted_target = floor(original_target * (revised_overs / original_overs)) + 1
+ */
+const applyDLS = (matchId, revisedOvers) => {
+  const match = matchModel.findById(matchId);
+  if (!match) throw new Error('Match not found');
+  
+  if (match.status !== MATCH_STATUS.MATCH_DELAYED) {
+    throw new Error('DLS can only be applied to delayed matches');
+  }
+  
+  const originalOvers = match.original_overs || 20;
+  
+  if (revisedOvers >= originalOvers) {
+    throw new Error('Revised overs must be less than original overs for DLS');
+  }
+  
+  if (revisedOvers < 5) {
+    throw new Error('Minimum 5 overs required for a valid match');
+  }
+  
+  // Get first innings score if available
+  const innings = matchModel.findInningsByMatchId(matchId);
+  let originalTarget = null;
+  let battingTeamId = null;
+  
+  if (innings.length > 0) {
+    // First innings is complete, calculate target for second innings
+    originalTarget = innings[0].total_runs + 1;
+    battingTeamId = innings[0].batting_team_id;
+  }
+  
+  // Calculate DLS adjusted target
+  // Formula: adjusted_target = floor(original_target * (revised_overs / original_overs)) + 1
+  let dlsAdjustedTarget = null;
+  
+  if (originalTarget) {
+    dlsAdjustedTarget = Math.floor(originalTarget * (revisedOvers / originalOvers)) + 1;
+  }
+  
+  // Update match with revised overs and DLS target
+  const updatedMatch = matchModel.updateStatus(matchId, MATCH_STATUS.IN_PROGRESS, {
+    revisedOvers,
+    dlsAdjustedTarget
+  });
+  
+  sseService.broadcastUpdate(matchId, 'dls_applied', {
+    matchId,
+    originalOvers,
+    revisedOvers,
+    originalTarget,
+    dlsAdjustedTarget,
+    battingTeamId,
+    matchState: getMatchDetails(matchId)
+  });
+  
+  return {
+    ...getMatchDetails(matchId),
+    dlsInfo: {
+      originalOvers,
+      revisedOvers,
+      originalTarget,
+      dlsAdjustedTarget,
+      battingTeamId
+    }
+  };
+};
+
+/**
+ * Abandon a match
+ */
+const abandonMatch = (matchId, reason = 'Match abandoned') => {
+  const match = matchModel.findById(matchId);
+  if (!match) throw new Error('Match not found');
+  
+  if (isFinalState(match.status)) {
+    throw new Error(`Match already in final state: ${match.status}`);
+  }
+  
+  const updatedMatch = matchModel.updateStatus(matchId, MATCH_STATUS.ABANDONED);
+  
+  let rescheduleInfo = null;
+  
+  // Auto-update points table if part of a tournament
+  if (match.tournament_id) {
+    // Try to reschedule
+    try {
+      rescheduleInfo = tournamentService.rescheduleMatch(match.tournament_id, matchId);
+    } catch (error) {
+      console.error('Rescheduling failed:', error.message);
+    }
+    
+    // If rescheduling is not possible, give points
+    if (!rescheduleInfo) {
+      autoUpdatePointsTable(match.tournament_id, matchId, {
+        status: MATCH_STATUS.ABANDONED
+      });
+    }
+  }
+  
+  sseService.broadcastUpdate(matchId, 'match_abandoned', {
+    matchId,
+    reason,
+    rescheduled: !!rescheduleInfo,
+    rescheduleInfo,
+    matchState: getMatchDetails(matchId)
+  });
+  
+  return {
+    ...getMatchDetails(matchId),
+    rescheduleInfo
+  };
+};
+
+/**
+ * Declare no result
+ */
+const declareNoResult = (matchId, reason = 'No result') => {
+  const match = matchModel.findById(matchId);
+  if (!match) throw new Error('Match not found');
+  
+  if (isFinalState(match.status)) {
+    throw new Error(`Match already in final state: ${match.status}`);
+  }
+  
+  const updatedMatch = matchModel.updateStatus(matchId, MATCH_STATUS.NO_RESULT);
+  
+  // Auto-update points table if part of a tournament
+  if (match.tournament_id) {
+    autoUpdatePointsTable(match.tournament_id, matchId, {
+      status: MATCH_STATUS.NO_RESULT
+    });
+  }
+  
+  sseService.broadcastUpdate(matchId, 'match_no_result', {
+    matchId,
+    reason,
+    matchState: getMatchDetails(matchId)
+  });
+  
+  return getMatchDetails(matchId);
+};
+
+/**
+ * Complete a match with a winner
+ */
+const completeMatch = (matchId, winnerId) => {
+  const match = matchModel.findById(matchId);
+  if (!match) throw new Error('Match not found');
+  
+  if (isFinalState(match.status)) {
+    throw new Error(`Match already in final state: ${match.status}`);
+  }
+  
+  const updatedMatch = matchModel.updateStatus(matchId, MATCH_STATUS.COMPLETED, { winnerId });
+  
+  // Auto-update points table if part of a tournament
+  if (match.tournament_id) {
+    autoUpdatePointsTable(match.tournament_id, matchId, {
+      status: MATCH_STATUS.COMPLETED,
+      winnerId
+    });
+  }
+  
+  sseService.broadcastUpdate(matchId, 'match_complete', {
+    matchId,
+    winnerId,
+    matchState: getMatchDetails(matchId)
+  });
+  
+  return getMatchDetails(matchId);
+};
+
+/**
+ * Auto-update points table when match reaches final state
+ */
+const autoUpdatePointsTable = (tournamentId, matchId, result) => {
+  const match = matchModel.findById(matchId);
+  if (!match) return;
+  
+  const team1Id = match.team1_id;
+  const team2Id = match.team2_id;
+  
+  // Get innings data for NRR calculation
+  const innings = matchModel.findInningsByMatchId(matchId);
+  
+  let team1Runs = 0, team2Runs = 0;
+  let team1Overs = 0, team2Overs = 0;
+  let team1Wickets = 0, team2Wickets = 0;
+  
+  for (const ing of innings) {
+    if (ing.batting_team_id === team1Id) {
+      team1Runs = ing.total_runs;
+      team1Wickets = ing.total_wickets;
+      team1Overs = parseOvers(ing.total_overs);
+    } else if (ing.batting_team_id === team2Id) {
+      team2Runs = ing.total_runs;
+      team2Wickets = ing.total_wickets;
+      team2Overs = parseOvers(ing.total_overs);
+    }
+  }
+  
+  // Use revised overs if DLS was applied
+  const oversFor = match.revised_overs || match.original_overs || 20;
+  
+  // If team is all out, they face full overs for NRR
+  const team1OversForNRR = team1Wickets >= 10 ? oversFor : (team1Overs || oversFor);
+  const team2OversForNRR = team2Wickets >= 10 ? oversFor : (team2Overs || oversFor);
+  
+  const pointsData = {
+    matchId,
+    team1Runs,
+    team2Runs,
+    team1Overs: team1OversForNRR,
+    team2Overs: team2OversForNRR,
+    team1Wickets,
+    team2Wickets
+  };
+  
+  if (result.status === MATCH_STATUS.COMPLETED && result.winnerId) {
+    pointsData.winnerId = result.winnerId;
+    pointsData.isTie = false;
+    pointsData.isNoResult = false;
+  } else if (result.status === MATCH_STATUS.ABANDONED || result.status === MATCH_STATUS.NO_RESULT) {
+    pointsData.winnerId = null;
+    pointsData.isTie = false;
+    pointsData.isNoResult = true;
+  }
+  
+  tournamentService.updatePointsAfterMatch(tournamentId, matchId, pointsData);
+};
+
+/**
+ * Parse overs string to float (e.g., "4.3" -> 4.5)
+ */
+const parseOvers = (oversStr) => {
+  if (!oversStr) return 0;
+  const parts = oversStr.toString().split('.');
+  const overs = parseInt(parts[0]) || 0;
+  const balls = parseInt(parts[1]) || 0;
+  return overs + (balls / 6);
 };
 
 /**
@@ -506,12 +847,25 @@ const setNewBowler = (matchId, bowlerId) => {
 };
 
 module.exports = {
+  // Match lifecycle
   startMatch,
+  scheduleMatch,
+  startScheduledMatch,
+  delayMatch,
+  applyDLS,
+  abandonMatch,
+  declareNoResult,
+  completeMatch,
+  
+  // Match actions
   setTossResult,
   initializeInnings,
   recordBall,
   getMatchDetails,
   setNewBatsman,
   setNewBowler,
-  completeInnings
+  completeInnings,
+  
+  // Constants
+  MATCH_STATUS
 };

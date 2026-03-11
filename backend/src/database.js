@@ -81,11 +81,18 @@ const initDatabase = () => {
         toss_winner_id TEXT,
         toss_decision TEXT,
         current_innings INTEGER DEFAULT 1,
-        status TEXT DEFAULT 'not_started',
+        status TEXT DEFAULT 'scheduled',
         winner_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         started_at DATETIME,
         completed_at DATETIME,
+        scheduled_date TEXT,
+        original_overs INTEGER DEFAULT 20,
+        revised_overs INTEGER,
+        dls_adjusted_target INTEGER,
+        dls_applied INTEGER DEFAULT 0,
+        fixture_id TEXT,
+        tournament_id TEXT,
         FOREIGN KEY (team1_id) REFERENCES teams(id),
         FOREIGN KEY (team2_id) REFERENCES teams(id),
         FOREIGN KEY (toss_winner_id) REFERENCES teams(id),
@@ -214,6 +221,141 @@ const initDatabase = () => {
         current_bowler_id TEXT,
         last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (match_id) REFERENCES matches(id)
+      )
+    `);
+
+    // ============ Tournament Tables ============
+
+    // Tournaments table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tournaments (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        short_name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        host_country TEXT,
+        status TEXT DEFAULT 'upcoming',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Stadiums table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS stadiums (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        city TEXT NOT NULL,
+        country TEXT NOT NULL,
+        capacity INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Tournament teams (teams participating in a tournament)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tournament_teams (
+        id TEXT PRIMARY KEY,
+        tournament_id TEXT NOT NULL,
+        team_id TEXT NOT NULL,
+        group_name TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+        FOREIGN KEY (team_id) REFERENCES teams(id),
+        UNIQUE(tournament_id, team_id)
+      )
+    `);
+
+    // Fixtures table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS fixtures (
+        id TEXT PRIMARY KEY,
+        tournament_id TEXT NOT NULL,
+        match_number INTEGER NOT NULL,
+        team1_id TEXT,
+        team2_id TEXT,
+        match_date TEXT NOT NULL,
+        stadium_id TEXT,
+        match_type TEXT DEFAULT 'group',
+        group_name TEXT,
+        round_number INTEGER DEFAULT 1,
+        match_id TEXT,
+        stage TEXT DEFAULT 'group',
+        stage_position INTEGER,
+        team1_qualification_rule TEXT,
+        team2_qualification_rule TEXT,
+        winner_id TEXT,
+        is_super_over INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+        FOREIGN KEY (team1_id) REFERENCES teams(id),
+        FOREIGN KEY (team2_id) REFERENCES teams(id),
+        FOREIGN KEY (stadium_id) REFERENCES stadiums(id),
+        FOREIGN KEY (match_id) REFERENCES matches(id),
+        FOREIGN KEY (winner_id) REFERENCES teams(id)
+      )
+    `);
+
+    // Super overs table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS super_overs (
+        id TEXT PRIMARY KEY,
+        match_id TEXT NOT NULL,
+        super_over_number INTEGER DEFAULT 1,
+        batting_team_id TEXT NOT NULL,
+        bowling_team_id TEXT NOT NULL,
+        total_runs INTEGER DEFAULT 0,
+        total_wickets INTEGER DEFAULT 0,
+        is_complete INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (match_id) REFERENCES matches(id),
+        FOREIGN KEY (batting_team_id) REFERENCES teams(id),
+        FOREIGN KEY (bowling_team_id) REFERENCES teams(id)
+      )
+    `);
+
+    // Super over balls table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS super_over_balls (
+        id TEXT PRIMARY KEY,
+        super_over_id TEXT NOT NULL,
+        ball_number INTEGER NOT NULL,
+        batsman_id TEXT NOT NULL,
+        bowler_id TEXT NOT NULL,
+        runs_scored INTEGER DEFAULT 0,
+        is_wicket INTEGER DEFAULT 0,
+        extra_type TEXT,
+        extra_runs INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (super_over_id) REFERENCES super_overs(id),
+        FOREIGN KEY (batsman_id) REFERENCES players(id),
+        FOREIGN KEY (bowler_id) REFERENCES players(id)
+      )
+    `);
+
+    // Points table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS points_table (
+        id TEXT PRIMARY KEY,
+        tournament_id TEXT NOT NULL,
+        team_id TEXT NOT NULL,
+        group_name TEXT,
+        matches_played INTEGER DEFAULT 0,
+        won INTEGER DEFAULT 0,
+        lost INTEGER DEFAULT 0,
+        tied INTEGER DEFAULT 0,
+        no_result INTEGER DEFAULT 0,
+        points INTEGER DEFAULT 0,
+        runs_for INTEGER DEFAULT 0,
+        runs_against INTEGER DEFAULT 0,
+        overs_for REAL DEFAULT 0,
+        overs_against REAL DEFAULT 0,
+        net_run_rate REAL DEFAULT 0,
+        last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+        FOREIGN KEY (team_id) REFERENCES teams(id),
+        UNIQUE(tournament_id, team_id)
       )
     `);
 

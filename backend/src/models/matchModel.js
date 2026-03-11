@@ -4,12 +4,89 @@
 
 const { db } = require('../database');
 
+// Match status constants
+const MATCH_STATUS = {
+  // Intermediate states
+  SCHEDULED: 'scheduled',
+  IN_PROGRESS: 'in_progress',
+  MATCH_DELAYED: 'match_delayed',
+  
+  // Final states
+  COMPLETED: 'completed',
+  ABANDONED: 'abandoned',
+  NO_RESULT: 'no_result'
+};
+
+// Final states - once reached, match cannot change
+const FINAL_STATES = [MATCH_STATUS.COMPLETED, MATCH_STATUS.ABANDONED, MATCH_STATUS.NO_RESULT];
+
+// Intermediate states - can transition to other states
+const INTERMEDIATE_STATES = [MATCH_STATUS.SCHEDULED, MATCH_STATUS.IN_PROGRESS, MATCH_STATUS.MATCH_DELAYED];
+
 const findAll = () => {
   return db.prepare('SELECT * FROM matches ORDER BY created_at DESC').all();
 };
 
 const findById = (id) => {
   return db.prepare('SELECT * FROM matches WHERE id = ?').get(id);
+};
+
+const findByStatus = (status) => {
+  return db.prepare('SELECT * FROM matches WHERE status = ? ORDER BY created_at DESC').all(status);
+};
+
+const findByTournament = (tournamentId) => {
+  return db.prepare('SELECT * FROM matches WHERE tournament_id = ? ORDER BY scheduled_date').all(tournamentId);
+};
+
+const updateStatus = (matchId, status, additionalData = {}) => {
+  const fields = ['status = ?'];
+  const values = [status];
+  
+  if (status === MATCH_STATUS.COMPLETED) {
+    fields.push('completed_at = ?');
+    values.push(new Date().toISOString());
+  }
+  
+  if (status === MATCH_STATUS.IN_PROGRESS) {
+    fields.push('started_at = ?');
+    values.push(new Date().toISOString());
+  }
+  
+  if (additionalData.winnerId) {
+    fields.push('winner_id = ?');
+    values.push(additionalData.winnerId);
+  }
+  
+  if (additionalData.revisedOvers !== undefined) {
+    fields.push('revised_overs = ?');
+    values.push(additionalData.revisedOvers);
+  }
+  
+  if (additionalData.dlsAdjustedTarget !== undefined) {
+    fields.push('dls_adjusted_target = ?');
+    fields.push('dls_applied = 1');
+    values.push(additionalData.dlsAdjustedTarget);
+  }
+  
+  values.push(matchId);
+  
+  db.prepare(`UPDATE matches SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+  
+  return findById(matchId);
+};
+
+const updateScheduledDate = (matchId, scheduledDate) => {
+  db.prepare('UPDATE matches SET scheduled_date = ? WHERE id = ?').run(scheduledDate, matchId);
+  return findById(matchId);
+};
+
+const isFinalState = (status) => {
+  return FINAL_STATES.includes(status);
+};
+
+const isIntermediateState = (status) => {
+  return INTERMEDIATE_STATES.includes(status);
 };
 
 const findInningsByMatchId = (matchId) => {
@@ -99,8 +176,16 @@ const findPlayerBowlingStats = (playerId) => {
 };
 
 module.exports = {
+  // Constants
+  MATCH_STATUS,
+  FINAL_STATES,
+  INTERMEDIATE_STATES,
+  
+  // Queries
   findAll,
   findById,
+  findByStatus,
+  findByTournament,
   findInningsByMatchId,
   findCurrentInnings,
   findMatchState,
@@ -109,5 +194,13 @@ module.exports = {
   findFallOfWicketsByInningsId,
   findBallsByInningsId,
   findPlayerBattingStats,
-  findPlayerBowlingStats
+  findPlayerBowlingStats,
+  
+  // Updates
+  updateStatus,
+  updateScheduledDate,
+  
+  // Helpers
+  isFinalState,
+  isIntermediateState
 };

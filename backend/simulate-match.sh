@@ -17,12 +17,22 @@ echo -e "${BLUE}  Live T20 Match Simulation (Demo)${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
+# Helper to extract ID from JSON response
+extract_id() {
+    python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('data', {}).get('id', '') if isinstance(data.get('data'), dict) else '')"
+}
+
 # Start match
 echo -e "${GREEN}Starting Match...${NC}"
 response=$(curl -s -X POST "$BASE_URL/match/start" \
     -H "Content-Type: application/json" \
     -d '{"team1Id":"team-india","team2Id":"team-sa"}')
-MATCH_ID=$(echo "$response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+MATCH_ID=$(echo "$response" | extract_id)
+
+if [ -z "$MATCH_ID" ]; then
+    echo -e "${RED}Error: Failed to create match or capture ID${NC}"
+    exit 1
+fi
 
 echo -e "${YELLOW}----------------------------------------${NC}"
 echo -e "${YELLOW} MATCH ID: ${NC}${GREEN}$MATCH_ID${NC}"
